@@ -1,0 +1,53 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Tesla Solar Charging
+    state_color: true
+    entities:
+      - entity: switch.solar_charging
+        name: Controller
+        icon: mdi:solar-power
+      - entity: switch.force_charge
+        name: Force Charge
+        icon: mdi:flash-alert
+      - entity: sensor.state
+        name: Status
+      - entity: sensor.reason
+        name: Reason
+      - entity: sensor.ble_status
+        name: BLE / ESP32
+        icon: mdi:bluetooth-connect
+      - entity: sensor.cloud_strategy
+        name: Cloud Strategy
+        icon: mdi:weather-partly-cloudy
+      - type: divider
+      - entity: sensor.tesla_di_luca_battery
+        name: Tesla Battery
+        icon: mdi:car-battery
+      - entity: device_tracker.tesla_di_luca_location_tracker
+        name: Tesla Location
+        icon: mdi:map-marker
+      - entity: input_number.tesla_solar_target_soc
+        name: Target SOC
+      - entity: input_datetime.tesla_solar_deadline
+        name: Charge By
+      - type: divider
+      - entity: sensor.charging_amps
+        name: Charging Amps
+        icon: mdi:current-ac
+      - entity: sensor.net_available
+        name: Net Available
+        icon: mdi:solar-power-variant
+      - entity: sensor.esp32_deye_inverter_grid_power
+        name: Grid Power
+        icon: mdi:transmission-tower
+      - type: divider
+      - entity: sensor.solar_forecast
+        name: Tomorrow Forecast
+        icon: mdi:weather-sunny
+      - entity: sensor.plan
+        name: Plan
+        icon: mdi:clipboard-text
+      - entity: sensor.forecast_accuracy
+        name: Correction Factor
+        icon: mdi:chart-line

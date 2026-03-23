@@ -1,0 +1,133 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tesla Solar Charging — Sensors & BLE",
+        "description": "Configure sensor entities and Tesla BLE controls.",
+        "data": {
+          "grid_power_entity": "Grid Power Sensor",
+          "grid_voltage_entity": "Grid Voltage Sensor",
+          "battery_soc_entity": "Inverter Battery SOC Sensor",
+          "battery_power_entity": "Inverter Battery Power Sensor",
+          "ble_charger_switch": "Tesla BLE Charger Switch",
+          "ble_charging_amps": "Tesla BLE Charging Amps",
+          "ble_wake_button": "Tesla BLE Wake Button",
+          "tesla_location_entity": "Tesla Location Tracker (optional)",
+          "tesla_battery_entity": "Tesla Battery Sensor (optional)",
+          "tesla_charge_limit_entity": "Tesla Charge Limit (optional)",
+          "daily_production_entity": "Daily Solar Production Sensor (optional)",
+          "tesla_deadline_entity": "Tesla Charge Deadline (input_datetime, optional)",
+          "tesla_target_soc_entity": "Tesla Target SOC (input_number, optional)"
+        }
+      },
+      "inverter": {
+        "title": "Tesla Solar Charging — Inverter & Notifications",
+        "description": "Configure Deye inverter controls, Octopus Energy, and notifications.",
+        "data": {
+          "deye_work_mode_entity": "Deye Work Mode (select entity)",
+          "deye_energy_pattern_entity": "Deye Energy Pattern (select entity)",
+          "deye_battery_discharge_entity": "Deye Battery Max Discharge (number entity)",
+          "octopus_enabled": "Enable Octopus Energy Integration",
+          "octopus_smart_charge_entity": "Octopus Smart Charge Switch (optional)",
+          "octopus_dispatching_entity": "Octopus Dispatching Sensor (optional)",
+          "octopus_email": "Octopus Italy Email (for smart charge control)",
+          "octopus_password": "Octopus Italy Password",
+          "octopus_device_id": "Octopus Device ID",
+          "telegram_chat_id": "Telegram Chat ID",
+          "planning_time": "Evening Planning Time (HH:MM)"
+        }
+      },
+      "energy": {
+        "title": "Tesla Solar Charging — Energy Parameters",
+        "description": "Configure your energy system parameters.",
+        "data": {
+          "pv_system_kwp": "PV System Size (kWp)",
+          "home_battery_kwh": "Home Battery Capacity (kWh)",
+          "tesla_battery_kwh": "Tesla Battery Capacity (kWh)",
+          "avg_house_consumption_kwh": "Avg Daily House Consumption (kWh)",
+          "grid_power_limit": "Grid Power Limit (W)",
+          "min_export_power": "Min Export Power to Start (W)",
+          "max_charging_amps": "Max Charging Amps",
+          "safety_buffer_amps": "Safety Buffer (A)",
+          "battery_soc_threshold": "Inverter Battery SOC Threshold (%)",
+          "low_amp_stop_count": "Low Amp Stop Count",
+          "update_interval": "Update Interval (s)",
+          "performance_ratio": "PV Performance Ratio (0-1, default 0.60)",
+          "battery_discharge_threshold": "Battery Discharge Threshold (W)",
+          "home_location_states": "Home Location States (comma-separated)",
+          "hourly_forecast_enabled": "Enable Hourly Cloud Forecast",
+          "planner_safety_margin": "Planner Safety Margin (1.0 = none, 1.2 = 20% extra)",
+          "solcast_api_key": "Solcast API Key (optional, free hobbyist tier)",
+          "solcast_resource_id": "Solcast Resource ID",
+          "forecast_solar_enabled": "Enable Forecast.Solar (optional)",
+          "forecast_solar_declination": "Panel Tilt/Declination (degrees, 0=flat, 90=vertical)",
+          "forecast_solar_azimuth": "Panel Azimuth (degrees, 0=north, 180=south)"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Sensors & BLE Entities",
+        "data": {
+          "grid_power_entity": "Grid Power Sensor",
+          "grid_voltage_entity": "Grid Voltage Sensor",
+          "battery_soc_entity": "Inverter Battery SOC Sensor",
+          "battery_power_entity": "Inverter Battery Power Sensor",
+          "ble_charger_switch": "Tesla BLE Charger Switch",
+          "ble_charging_amps": "Tesla BLE Charging Amps",
+          "ble_wake_button": "Tesla BLE Wake Button",
+          "tesla_location_entity": "Tesla Location Tracker (optional)",
+          "tesla_battery_entity": "Tesla Battery Sensor (optional)",
+          "tesla_charge_limit_entity": "Tesla Charge Limit (optional)",
+          "daily_production_entity": "Daily Solar Production Sensor (optional)",
+          "tesla_deadline_entity": "Tesla Charge Deadline (input_datetime, optional)",
+          "tesla_target_soc_entity": "Tesla Target SOC (input_number, optional)"
+        }
+      },
+      "inverter": {
+        "title": "Inverter & Notifications",
+        "data": {
+          "deye_work_mode_entity": "Deye Work Mode (select entity)",
+          "deye_energy_pattern_entity": "Deye Energy Pattern (select entity)",
+          "deye_battery_discharge_entity": "Deye Battery Max Discharge (number entity)",
+          "octopus_enabled": "Enable Octopus Energy Integration",
+          "octopus_smart_charge_entity": "Octopus Smart Charge Switch (optional)",
+          "octopus_dispatching_entity": "Octopus Dispatching Sensor (optional)",
+          "octopus_email": "Octopus Italy Email",
+          "octopus_password": "Octopus Italy Password",
+          "octopus_device_id": "Octopus Device ID",
+          "telegram_chat_id": "Telegram Chat ID",
+          "planning_time": "Evening Planning Time (HH:MM)"
+        }
+      },
+      "energy": {
+        "title": "Energy Parameters",
+        "data": {
+          "pv_system_kwp": "PV System Size (kWp)",
+          "home_battery_kwh": "Home Battery Capacity (kWh)",
+          "tesla_battery_kwh": "Tesla Battery Capacity (kWh)",
+          "avg_house_consumption_kwh": "Avg Daily House Consumption (kWh)",
+          "grid_power_limit": "Grid Power Limit (W)",
+          "min_export_power": "Min Export Power to Start (W)",
+          "max_charging_amps": "Max Charging Amps",
+          "safety_buffer_amps": "Safety Buffer (A)",
+          "battery_soc_threshold": "Inverter Battery SOC Threshold (%)",
+          "low_amp_stop_count": "Low Amp Stop Count",
+          "update_interval": "Update Interval (s)",
+          "performance_ratio": "PV Performance Ratio (0-1, default 0.60)",
+          "battery_discharge_threshold": "Battery Discharge Threshold (W)",
+          "home_location_states": "Home Location States (comma-separated)",
+          "hourly_forecast_enabled": "Enable Hourly Cloud Forecast",
+          "planner_safety_margin": "Planner Safety Margin (1.0 = none, 1.2 = 20% extra)",
+          "solcast_api_key": "Solcast API Key (optional, free hobbyist tier)",
+          "solcast_resource_id": "Solcast Resource ID",
+          "forecast_solar_enabled": "Enable Forecast.Solar (optional)",
+          "forecast_solar_declination": "Panel Tilt/Declination (degrees, 0=flat, 90=vertical)",
+          "forecast_solar_azimuth": "Panel Azimuth (degrees, 0=north, 180=south)"
+        }
+      }
+    }
+  }
+}
