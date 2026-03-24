@@ -318,6 +318,10 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("Car plugged in — force charge reset")
         self._prev_charger_connected = charger_connected
 
+        # Read grid sensors
+        grid_power = self._get_float(self._entry_data[CONF_GRID_POWER_ENTITY])
+        grid_voltage = self._get_float(self._entry_data[CONF_GRID_VOLTAGE_ENTITY])
+
         if grid_power is None or grid_voltage is None:
             self._state = STATE_ERROR
             self._reason = "Grid sensors unavailable"

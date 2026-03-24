@@ -27,9 +27,12 @@ async def fetch_solcast_forecast(hass, api_key: str, resource_id: str) -> list[S
         url = SOLCAST_URL.format(resource_id=rid)
         try:
             resp = await session.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
+            if resp.status == 429:
+                _LOGGER.warning("Solcast rate limited for %s — will use other sources", rid)
+                continue
             if resp.status != 200:
                 body = await resp.text()
-                _LOGGER.error("Solcast returned status %d for %s: %s", resp.status, rid, body[:300])
+                _LOGGER.warning("Solcast returned status %d for %s: %s", resp.status, rid, body[:300])
                 continue
             data = await resp.json(content_type=None)
             forecasts = data.get("forecasts", [])
