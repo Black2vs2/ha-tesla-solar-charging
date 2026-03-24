@@ -60,20 +60,36 @@ def calculate_net_available(
     grid_voltage: float,
     battery_power: float,
     safety_buffer: float,
+    current_charging_amps: float = 0.0,
 ) -> float:
     """Calculate net available amps for car charging.
 
-    Only counts actual grid export (energy being wasted to grid).
-    If battery is discharging, that power isn't excess — subtract it.
+    Total solar available = what the car is using + what's exported + what
+    the battery is absorbing. The inverter splits solar between battery,
+    car, house, and grid — we want to know the total budget the car could
+    use if the battery shared.
+
+    Formula: solar_for_car = car_draw + grid_export + battery_charge_power
+    Then subtract safety buffer and any battery discharge.
     """
     if grid_voltage <= 0:
         return 0.0
 
-    export_amps = (abs(grid_power) / grid_voltage) if grid_power < 0 else 0.0
-    export_amps = min(export_amps, MAX_REASONABLE_EXPORT_AMPS)
-    battery_amps = (max(0, battery_power) / grid_voltage)
+    # Ignore small grid import noise when battery is active
+    effective_grid = grid_power
+    if grid_power > 0 and abs(battery_power) > 0 and grid_power < 150:
+        effective_grid = 0.0
 
-    return export_amps - safety_buffer - battery_amps
+    car_power = current_charging_amps * grid_voltage
+    grid_export = abs(effective_grid) if effective_grid < 0 else 0.0
+    battery_charge = abs(battery_power) if battery_power < 0 else 0.0
+    battery_discharge = max(0, battery_power)
+
+    # Total solar available for the car = what it's using + export + battery absorbing
+    total_solar_for_car = car_power + grid_export + battery_charge
+    total_amps = total_solar_for_car / grid_voltage
+
+    return min(total_amps, MAX_REASONABLE_EXPORT_AMPS) - safety_buffer - (battery_discharge / grid_voltage)
 
 
 def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
@@ -90,6 +106,7 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
         state.grid_voltage,
         state.battery_power,
         config.safety_buffer_amps,
+        current_charging_amps=state.current_amps if state.is_charging else 0.0,
     )
 
     # Tesla already full?
@@ -108,10 +125,23 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
     # --- NOT CHARGING ---
     if not state.is_charging:
         # Don't start if home battery is too low (unless force charge)
+        # But allow early start if export is so high we can charge both
         if not force and state.battery_soc < config.battery_soc_threshold:
+            # Allow if exporting well above minimum (2x) — plenty for both
+            export_w = abs(state.grid_power) if state.grid_power < 0 else 0
+            if export_w < config.min_export_power * 2:
+                return Decision(
+                    action=Action.NONE,
+                    reason=f"Home battery {state.battery_soc}% below {config.battery_soc_threshold}% — filling first (export {export_w:.0f}W)",
+                )
+
+        # Battery at threshold but inverter still absorbing — start at minimum,
+        # the ramp logic will adjust once export kicks in
+        if state.battery_soc >= config.battery_soc_threshold and state.battery_power < 0:
             return Decision(
-                action=Action.NONE,
-                reason=f"Home battery {state.battery_soc}% below {config.battery_soc_threshold}% — filling first",
+                action=Action.START,
+                target_amps=config.min_charging_amps,
+                reason=f"Battery {state.battery_soc}% at threshold, still charging at {abs(state.battery_power):.0f}W — starting at min amps",
             )
 
         # Don't start if not exporting enough
@@ -159,25 +189,32 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
             new_low_amp_count=0,
         )
 
-    # Ramp up/down based on actual grid export
-    if net_available >= 4:
-        target = min(int(state.current_amps + 2), config.max_charging_amps)
+    # When battery is actively charging, the car and battery are sharing solar.
+    # Don't reduce/stop based on headroom — the battery absorbing power is fine.
+    # Only the battery-discharging check above should trigger reductions.
+    battery_is_charging = state.battery_power < -50  # absorbing > 50W
+    real_grid_import = state.grid_power > 150  # ignore sensor noise
+
+    # Ramp up/down based on headroom (net_available vs current draw)
+    headroom = net_available - state.current_amps
+    if headroom >= 4:
+        target = min(int(state.current_amps + 2), int(net_available), config.max_charging_amps)
         return Decision(
             action=Action.ADJUST,
             target_amps=target,
-            reason=f"Net {net_available:.1f}A excess, ramping to {target}A",
+            reason=f"Headroom {headroom:.1f}A (net {net_available:.1f}A), ramping to {target}A",
             new_low_amp_count=0,
         )
-    elif net_available >= 2:
-        target = min(int(state.current_amps + 1), config.max_charging_amps)
+    elif headroom >= 2:
+        target = min(int(state.current_amps + 1), int(net_available), config.max_charging_amps)
         return Decision(
             action=Action.ADJUST,
             target_amps=target,
-            reason=f"Net {net_available:.1f}A excess, increasing to {target}A",
+            reason=f"Headroom {headroom:.1f}A (net {net_available:.1f}A), increasing to {target}A",
             new_low_amp_count=0,
         )
-    elif net_available <= -2:
-        # Importing from grid — reduce car
+    elif headroom <= -2 and not battery_is_charging:
+        # Actually importing from grid (battery not helping) — reduce car
         target = max(int(state.current_amps - 1), config.min_charging_amps)
         if target <= config.min_charging_amps and state.current_amps <= config.min_charging_amps:
             new_count = state.low_amp_count + 1
@@ -196,15 +233,24 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
         return Decision(
             action=Action.ADJUST,
             target_amps=target,
-            reason=f"Importing, reducing to {target}A",
+            reason=f"Importing {state.grid_power:.0f}W, reducing to {target}A",
+            new_low_amp_count=0,
+        )
+    elif real_grid_import and not battery_is_charging:
+        # Grid importing and battery not charging — reduce
+        target = max(int(state.current_amps - 1), config.min_charging_amps)
+        return Decision(
+            action=Action.ADJUST,
+            target_amps=target,
+            reason=f"Grid importing {state.grid_power:.0f}W, reducing to {target}A",
             new_low_amp_count=0,
         )
     else:
-        # Stable — hold
+        # Stable — battery is charging, car is fine where it is
         return Decision(
             action=Action.NONE,
             target_amps=int(state.current_amps),
-            reason=f"Stable at {int(state.current_amps)}A, net {net_available:.1f}A",
+            reason=f"Stable at {int(state.current_amps)}A, battery charging {abs(state.battery_power):.0f}W, grid {state.grid_power:.0f}W",
             new_low_amp_count=0,
         )
 

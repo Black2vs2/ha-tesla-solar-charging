@@ -12,12 +12,11 @@
           "ble_charger_switch": "Tesla BLE Charger Switch",
           "ble_charging_amps": "Tesla BLE Charging Amps",
           "ble_wake_button": "Tesla BLE Wake Button",
+          "ble_charge_limit": "Tesla BLE Charge Limit (number entity, optional)",
           "tesla_location_entity": "Tesla Location Tracker (optional)",
-          "tesla_battery_entity": "Tesla Battery Sensor (optional)",
-          "tesla_charge_limit_entity": "Tesla Charge Limit (optional)",
-          "daily_production_entity": "Daily Solar Production Sensor (optional)",
-          "tesla_deadline_entity": "Tesla Charge Deadline (input_datetime, optional)",
-          "tesla_target_soc_entity": "Tesla Target SOC (input_number, optional)"
+          "home_location_states": "Home Location States (comma-separated, e.g. home, Piano di sotto)",
+          "tesla_battery_entity": "Tesla Battery SOC Sensor (optional)",
+          "daily_production_entity": "Daily Solar Production Sensor (optional)"
         }
       },
       "inverter": {
@@ -54,11 +53,10 @@
           "update_interval": "Update Interval (s)",
           "performance_ratio": "PV Performance Ratio (0-1, default 0.60)",
           "battery_discharge_threshold": "Battery Discharge Threshold (W)",
-          "home_location_states": "Home Location States (comma-separated)",
           "hourly_forecast_enabled": "Enable Hourly Cloud Forecast",
           "planner_safety_margin": "Planner Safety Margin (1.0 = none, 1.2 = 20% extra)",
           "solcast_api_key": "Solcast API Key (optional, free hobbyist tier)",
-          "solcast_resource_id": "Solcast Resource ID",
+          "solcast_resource_id": "Solcast Resource ID(s) (comma-separated for split arrays)",
           "forecast_solar_enabled": "Enable Forecast.Solar (optional)",
           "forecast_solar_declination": "Panel Tilt/Declination (degrees, 0=flat, 90=vertical)",
           "forecast_solar_azimuth": "Panel Azimuth (degrees, 0=north, 180=south)"
@@ -78,12 +76,11 @@
           "ble_charger_switch": "Tesla BLE Charger Switch",
           "ble_charging_amps": "Tesla BLE Charging Amps",
           "ble_wake_button": "Tesla BLE Wake Button",
+          "ble_charge_limit": "Tesla BLE Charge Limit (number entity, optional)",
           "tesla_location_entity": "Tesla Location Tracker (optional)",
-          "tesla_battery_entity": "Tesla Battery Sensor (optional)",
-          "tesla_charge_limit_entity": "Tesla Charge Limit (optional)",
-          "daily_production_entity": "Daily Solar Production Sensor (optional)",
-          "tesla_deadline_entity": "Tesla Charge Deadline (input_datetime, optional)",
-          "tesla_target_soc_entity": "Tesla Target SOC (input_number, optional)"
+          "home_location_states": "Home Location States (comma-separated, e.g. home, Piano di sotto)",
+          "tesla_battery_entity": "Tesla Battery SOC Sensor (optional)",
+          "daily_production_entity": "Daily Solar Production Sensor (optional)"
         }
       },
       "inverter": {
@@ -118,11 +115,10 @@
           "update_interval": "Update Interval (s)",
           "performance_ratio": "PV Performance Ratio (0-1, default 0.60)",
           "battery_discharge_threshold": "Battery Discharge Threshold (W)",
-          "home_location_states": "Home Location States (comma-separated)",
           "hourly_forecast_enabled": "Enable Hourly Cloud Forecast",
           "planner_safety_margin": "Planner Safety Margin (1.0 = none, 1.2 = 20% extra)",
           "solcast_api_key": "Solcast API Key (optional, free hobbyist tier)",
-          "solcast_resource_id": "Solcast Resource ID",
+          "solcast_resource_id": "Solcast Resource ID(s) (comma-separated for split arrays)",
           "forecast_solar_enabled": "Enable Forecast.Solar (optional)",
           "forecast_solar_declination": "Panel Tilt/Declination (degrees, 0=flat, 90=vertical)",
           "forecast_solar_azimuth": "Panel Azimuth (degrees, 0=north, 180=south)"
