@@ -4,6 +4,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -23,8 +24,11 @@ async def async_setup_entry(
     ])
 
 
-class SolarChargingSwitch(CoordinatorEntity, SwitchEntity):
-    """Switch to enable/disable solar charging controller."""
+class SolarChargingSwitch(RestoreEntity, CoordinatorEntity, SwitchEntity):
+    """Switch to enable/disable solar charging controller.
+
+    Persists state across HA restarts.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "Solar Charging"
@@ -33,6 +37,13 @@ class SolarChargingSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(self, coordinator: SolarChargingCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_switch"
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous on/off state."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state == "on":
+            self.coordinator.enabled = True
 
     @property
     def is_on(self) -> bool:

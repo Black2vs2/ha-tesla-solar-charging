@@ -12,6 +12,7 @@ from .const import (
     CONF_DAILY_PRODUCTION_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_BATTERY_SOC_THRESHOLD,
+    CONF_BLE_CHARGE_LIMIT,
     CONF_BLE_CHARGER_SWITCH,
     CONF_BLE_CHARGING_AMPS,
     CONF_BLE_WAKE_BUTTON,
@@ -44,10 +45,7 @@ from .const import (
     CONF_TELEGRAM_CHAT_ID,
     CONF_TESLA_BATTERY_ENTITY,
     CONF_TESLA_BATTERY_KWH,
-    CONF_TESLA_CHARGE_LIMIT_ENTITY,
-    CONF_TESLA_DEADLINE_ENTITY,
     CONF_TESLA_LOCATION_ENTITY,
-    CONF_TESLA_TARGET_SOC_ENTITY,
     CONF_SOLCAST_API_KEY,
     CONF_SOLCAST_RESOURCE_ID,
     CONF_UPDATE_INTERVAL,
@@ -117,15 +115,12 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_BLE_CHARGER_SWITCH): SWITCH_SELECTOR,
                 vol.Required(CONF_BLE_CHARGING_AMPS): NUMBER_SELECTOR,
                 vol.Required(CONF_BLE_WAKE_BUTTON): BUTTON_SELECTOR,
-                # Optional — Tesla cloud sensors
+                vol.Optional(CONF_BLE_CHARGE_LIMIT): NUMBER_SELECTOR,
+                # Optional — Tesla
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY): TRACKER_SELECTOR,
+                vol.Optional(CONF_HOME_LOCATION_STATES, default=DEFAULT_HOME_LOCATION_STATES): str,
                 vol.Optional(CONF_TESLA_BATTERY_ENTITY): SENSOR_SELECTOR,
-                vol.Optional(CONF_TESLA_CHARGE_LIMIT_ENTITY): NUMBER_SELECTOR,
                 vol.Optional(CONF_DAILY_PRODUCTION_ENTITY): SENSOR_SELECTOR,
-                vol.Optional(CONF_TESLA_DEADLINE_ENTITY): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="input_datetime")
-                ),
-                vol.Optional(CONF_TESLA_TARGET_SOC_ENTITY): NUMBER_SELECTOR,
             }),
         )
 
@@ -183,7 +178,7 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.Coerce(int),
                 vol.Optional(CONF_PERFORMANCE_RATIO, default=DEFAULT_PERFORMANCE_RATIO): vol.Coerce(float),
                 vol.Optional(CONF_BATTERY_DISCHARGE_THRESHOLD, default=DEFAULT_BATTERY_DISCHARGE_THRESHOLD): vol.Coerce(int),
-                vol.Optional(CONF_HOME_LOCATION_STATES, default=DEFAULT_HOME_LOCATION_STATES): str,
+
                 vol.Optional(CONF_HOURLY_FORECAST_ENABLED, default=DEFAULT_HOURLY_FORECAST_ENABLED): bool,
                 vol.Optional(CONF_PLANNER_SAFETY_MARGIN, default=DEFAULT_PLANNER_SAFETY_MARGIN): vol.Coerce(float),
                 vol.Optional(CONF_SOLCAST_API_KEY): str,
@@ -224,14 +219,11 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(CONF_BLE_CHARGER_SWITCH, default=data.get(CONF_BLE_CHARGER_SWITCH, "")): SWITCH_SELECTOR,
                 vol.Required(CONF_BLE_CHARGING_AMPS, default=data.get(CONF_BLE_CHARGING_AMPS, "")): NUMBER_SELECTOR,
                 vol.Required(CONF_BLE_WAKE_BUTTON, default=data.get(CONF_BLE_WAKE_BUTTON, "")): BUTTON_SELECTOR,
+                vol.Optional(CONF_BLE_CHARGE_LIMIT, default=data.get(CONF_BLE_CHARGE_LIMIT, "")): NUMBER_SELECTOR,
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY, default=data.get(CONF_TESLA_LOCATION_ENTITY, "")): TRACKER_SELECTOR,
+                vol.Optional(CONF_HOME_LOCATION_STATES, default=data.get(CONF_HOME_LOCATION_STATES, DEFAULT_HOME_LOCATION_STATES)): str,
                 vol.Optional(CONF_TESLA_BATTERY_ENTITY, default=data.get(CONF_TESLA_BATTERY_ENTITY, "")): SENSOR_SELECTOR,
-                vol.Optional(CONF_TESLA_CHARGE_LIMIT_ENTITY, default=data.get(CONF_TESLA_CHARGE_LIMIT_ENTITY, "")): NUMBER_SELECTOR,
                 vol.Optional(CONF_DAILY_PRODUCTION_ENTITY, default=data.get(CONF_DAILY_PRODUCTION_ENTITY, "")): SENSOR_SELECTOR,
-                vol.Optional(CONF_TESLA_DEADLINE_ENTITY, default=data.get(CONF_TESLA_DEADLINE_ENTITY, "")): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="input_datetime")
-                ),
-                vol.Optional(CONF_TESLA_TARGET_SOC_ENTITY, default=data.get(CONF_TESLA_TARGET_SOC_ENTITY, "")): NUMBER_SELECTOR,
             }),
         )
 
@@ -286,7 +278,6 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_UPDATE_INTERVAL, default=data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.Coerce(int),
                 vol.Optional(CONF_PERFORMANCE_RATIO, default=data.get(CONF_PERFORMANCE_RATIO, DEFAULT_PERFORMANCE_RATIO)): vol.Coerce(float),
                 vol.Optional(CONF_BATTERY_DISCHARGE_THRESHOLD, default=data.get(CONF_BATTERY_DISCHARGE_THRESHOLD, DEFAULT_BATTERY_DISCHARGE_THRESHOLD)): vol.Coerce(int),
-                vol.Optional(CONF_HOME_LOCATION_STATES, default=data.get(CONF_HOME_LOCATION_STATES, DEFAULT_HOME_LOCATION_STATES)): str,
                 vol.Optional(CONF_HOURLY_FORECAST_ENABLED, default=data.get(CONF_HOURLY_FORECAST_ENABLED, DEFAULT_HOURLY_FORECAST_ENABLED)): bool,
                 vol.Optional(CONF_PLANNER_SAFETY_MARGIN, default=data.get(CONF_PLANNER_SAFETY_MARGIN, DEFAULT_PLANNER_SAFETY_MARGIN)): vol.Coerce(float),
                 vol.Optional(CONF_SOLCAST_API_KEY, default=data.get(CONF_SOLCAST_API_KEY, "")): str,

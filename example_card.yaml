@@ -1,5 +1,6 @@
 type: vertical-stack
 cards:
+  # --- Controls ---
   - type: entities
     title: Tesla Solar Charging
     state_color: true
@@ -14,23 +15,40 @@ cards:
         name: Status
       - entity: sensor.reason
         name: Reason
-      - entity: sensor.ble_status
-        name: BLE / ESP32
-        icon: mdi:bluetooth-connect
-      - entity: sensor.cloud_strategy
-        name: Cloud Strategy
-        icon: mdi:weather-partly-cloudy
-      - type: divider
+
+  # --- Tesla ---
+  - type: entities
+    title: Tesla
+    entities:
       - entity: sensor.tesla_di_luca_battery
-        name: Tesla Battery
+        name: Battery SOC
         icon: mdi:car-battery
+      - entity: number.tesla_charge_limit
+        name: Charge Limit
+        icon: mdi:battery-lock
       - entity: device_tracker.tesla_di_luca_location_tracker
-        name: Tesla Location
+        name: Location
         icon: mdi:map-marker
-      - entity: input_number.tesla_solar_target_soc
-        name: Target SOC
-      - entity: input_datetime.tesla_solar_deadline
-        name: Charge By
+
+  # --- Power ---
+  - type: entities
+    title: Power & Grid
+    entities:
+      - entity: sensor.esp32_deye_inverter_grid_power
+        name: Grid Power
+        icon: mdi:transmission-tower
+      # Replace with your grid voltage entity
+      - entity: sensor.esp32_deye_inverter_grid_voltage
+        name: Grid Voltage
+        icon: mdi:flash
+      # Replace with your home battery SOC entity
+      - entity: sensor.esp32_deye_inverter_battery_soc
+        name: Home Battery SOC
+        icon: mdi:battery-high
+      # Replace with your home battery power entity
+      - entity: sensor.esp32_deye_inverter_battery_power
+        name: Home Battery Power
+        icon: mdi:battery-charging
       - type: divider
       - entity: sensor.charging_amps
         name: Charging Amps
@@ -38,16 +56,28 @@ cards:
       - entity: sensor.net_available
         name: Net Available
         icon: mdi:solar-power-variant
-      - entity: sensor.esp32_deye_inverter_grid_power
-        name: Grid Power
-        icon: mdi:transmission-tower
-      - type: divider
+
+  # --- Forecast & Plan ---
+  - type: entities
+    title: Forecast & Planning
+    entities:
       - entity: sensor.solar_forecast
         name: Tomorrow Forecast
         icon: mdi:weather-sunny
+      - entity: sensor.cloud_strategy
+        name: Cloud Strategy
+        icon: mdi:weather-partly-cloudy
       - entity: sensor.plan
         name: Plan
         icon: mdi:clipboard-text
       - entity: sensor.forecast_accuracy
         name: Correction Factor
         icon: mdi:chart-line
+
+  # --- System Health ---
+  - type: entities
+    title: System Health
+    entities:
+      - entity: sensor.ble_status
+        name: BLE / ESP32
+        icon: mdi:bluetooth-connect

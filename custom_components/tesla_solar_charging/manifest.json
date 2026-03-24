@@ -3,9 +3,9 @@
   "name": "Tesla Solar Charging",
   "codeowners": ["@black2vs2"],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["frontend"],
   "documentation": "https://github.com/black2vs2/ha-tesla-solar-charging",
   "issue_tracker": "https://github.com/black2vs2/ha-tesla-solar-charging/issues",
   "iot_class": "local_polling",
-  "version": "3.0.3"
+  "version": "3.0.25"
 }

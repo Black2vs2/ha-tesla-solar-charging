@@ -32,8 +32,8 @@ from .const import (
     CONF_TESLA_BATTERY_ENTITY,
     DEFAULT_AVG_HOUSE_CONSUMPTION_KWH,
     DEFAULT_BATTERY_DISCHARGE_THRESHOLD,
-    CONF_TESLA_CHARGE_LIMIT_ENTITY,
     CONF_TESLA_LOCATION_ENTITY,
+    DOMAIN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_BATTERY_SOC_THRESHOLD,
     DEFAULT_GRID_POWER_LIMIT,
@@ -64,6 +64,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
+        entry_id: str,
         entry_data: dict,
         ble: BLEController,
         inverter: InverterController,
@@ -75,6 +76,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
             name="tesla_solar_charging",
             update_interval=timedelta(seconds=interval),
         )
+        self._entry_id = entry_id
         self._entry_data = entry_data
         self._ble = ble
         self._inverter = inverter
@@ -97,6 +99,12 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._daily_grid_kwh = 0.0
         self._daily_peak_amps = 0
         self._daily_charge_seconds = 0
+        self._forecast_sources: list[dict] = []
+        self._forecast_pessimistic_kwh = 0.0
+        self._last_grid_power = 0.0
+        self._last_grid_voltage = 0.0
+        self._last_battery_soc = 0.0
+        self._last_battery_power = 0.0
 
     # --- Public properties ---
 
@@ -218,6 +226,20 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         except (ValueError, TypeError):
             return None
 
+    def _get_own_entity_id(self, domain: str, suffix: str) -> str | None:
+        """Look up entity_id for one of our own entities by unique_id suffix."""
+        from homeassistant.helpers import entity_registry as er
+        registry = er.async_get(self.hass)
+        unique_id = f"{self._entry_id}_{suffix}"
+        return registry.async_get_entity_id(domain, DOMAIN, unique_id)
+
+    def _get_own_float(self, suffix: str) -> float | None:
+        """Read a float value from one of our own number entities."""
+        entity_id = self._get_own_entity_id("number", suffix)
+        if entity_id:
+            return self._get_float(entity_id)
+        return None
+
     def _is_home(self) -> bool:
         entity_id = self._entry_data.get(CONF_TESLA_LOCATION_ENTITY)
         if not entity_id:
@@ -225,11 +247,24 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         state = self.hass.states.get(entity_id)
         if state is None:
             return True
+        if state.state in ("unavailable", "unknown"):
+            _LOGGER.debug(
+                "Tesla location entity %s is %s — assuming at home",
+                entity_id, state.state,
+            )
+            return True
         home_states = self._entry_data.get(
             CONF_HOME_LOCATION_STATES, DEFAULT_HOME_LOCATION_STATES
         )
         valid_states = [s.strip().lower() for s in home_states.split(",")]
-        return state.state.lower() in valid_states
+        actual = state.state.lower()
+        is_home = actual in valid_states
+        if not is_home:
+            _LOGGER.debug(
+                "Tesla location '%s' (entity %s) not in home states %s",
+                state.state, entity_id, valid_states,
+            )
+        return is_home
 
     def _is_charger_on(self) -> bool:
         state = self.hass.states.get(self._ble.charger_switch)
@@ -394,13 +429,15 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         battery_power = self._get_float(
             self._entry_data[CONF_BATTERY_POWER_ENTITY], 0.0
         ) or 0.0
+        self._last_grid_power = grid_power
+        self._last_grid_voltage = grid_voltage
+        self._last_battery_soc = battery_soc
+        self._last_battery_power = battery_power
 
         tesla_battery = None
-        tesla_limit = None
         if self._entry_data.get(CONF_TESLA_BATTERY_ENTITY):
             tesla_battery = self._get_float(self._entry_data[CONF_TESLA_BATTERY_ENTITY])
-        if self._entry_data.get(CONF_TESLA_CHARGE_LIMIT_ENTITY):
-            tesla_limit = self._get_float(self._entry_data[CONF_TESLA_CHARGE_LIMIT_ENTITY])
+        tesla_limit = self._get_own_float("charge_limit")
 
         sensor_state = SensorState(
             grid_power=grid_power,
@@ -426,7 +463,8 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         )
 
         self._net_available = calculate_net_available(
-            grid_power, grid_voltage, battery_power, config.safety_buffer_amps
+            grid_power, grid_voltage, battery_power, config.safety_buffer_amps,
+            current_charging_amps=self._get_current_amps() if self._is_charger_on() else 0.0,
         )
 
         decision = decide(sensor_state, config, force=self._force_charge)
@@ -451,8 +489,8 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 self._low_amp_count = 0
                 if "reached limit" in decision.reason:
                     from .notification import format_charge_limit_reached
-                    tesla_bat = self._get_float(self._entry_data.get(CONF_TESLA_BATTERY_ENTITY)) or 0
-                    tesla_lim = self._get_float(self._entry_data.get(CONF_TESLA_CHARGE_LIMIT_ENTITY)) or 0
+                    tesla_bat = self._get_float(self._entry_data.get(CONF_TESLA_BATTERY_ENTITY, "")) or 0
+                    tesla_lim = self._get_own_float("charge_limit") or 0
                     await self._notify(format_charge_limit_reached(tesla_bat, tesla_lim))
                 else:
                     from .notification import format_charge_stopped

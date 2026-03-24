@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -37,8 +38,6 @@ from .const import (
     CONF_TELEGRAM_CHAT_ID,
     CONF_TESLA_BATTERY_ENTITY,
     CONF_TESLA_BATTERY_KWH,
-    CONF_TESLA_DEADLINE_ENTITY,
-    CONF_TESLA_TARGET_SOC_ENTITY,
     DEFAULT_AVG_HOUSE_CONSUMPTION_KWH,
     DEFAULT_FORECAST_SOLAR_AZIMUTH,
     DEFAULT_FORECAST_SOLAR_DECLINATION,
@@ -48,6 +47,7 @@ from .const import (
     DEFAULT_TESLA_BATTERY_KWH,
     DOMAIN,
     PLATFORMS,
+    VERSION,
     STATE_PLANNED_NIGHT,
     STATE_PLANNED_SOLAR,
 )
@@ -83,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         battery_discharge_entity=data.get(CONF_DEYE_BATTERY_DISCHARGE_ENTITY),
     )
 
-    coordinator = SolarChargingCoordinator(hass, data, ble, inverter)
+    coordinator = SolarChargingCoordinator(hass, entry.entry_id, data, ble, inverter)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     # Initialize forecast tracker
@@ -100,13 +100,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Register custom panel (sidebar page)
+    from homeassistant.components.http import StaticPathConfig
+    from homeassistant.components.frontend import async_register_built_in_panel
+    frontend_path = Path(__file__).parent / "frontend"
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(f"/{DOMAIN}/panel", str(frontend_path), cache_headers=False)]
+    )
+    async_register_built_in_panel(
+        hass,
+        component_name="custom",
+        frontend_url_path=DOMAIN,
+        sidebar_title="Tesla Solar",
+        sidebar_icon="mdi:solar-power",
+        require_admin=False,
+        config={
+            "_panel_custom": {
+                "name": "tesla-solar-charging-panel",
+                "module_url": f"/{DOMAIN}/panel/panel.js?v={VERSION}",
+                "embed_iframe": False,
+                "trust_external": False,
+            },
+            "entry_id": entry.entry_id,
+        },
+    )
+
     # Fetch forecast on startup (don't send notification, just populate sensors)
     async def _startup_forecast(now=None):
         await _update_forecast(hass, coordinator, data)
 
-    entry.async_on_unload(
-        hass.bus.async_listen_once("homeassistant_started", _startup_forecast)
-    )
+    if hass.is_running:
+        # Integration reloaded after HA already started — fetch immediately
+        hass.async_create_task(_startup_forecast())
+    else:
+        entry.async_on_unload(
+            hass.bus.async_listen_once("homeassistant_started", _startup_forecast)
+        )
 
     # Schedule evening planner
     planning_time = data.get(CONF_PLANNING_TIME, DEFAULT_PLANNING_TIME)
@@ -260,6 +289,16 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
     # Blend all sources
     blended = blend_forecasts(sources)
     coordinator.forecast_kwh = blended.blended_kwh
+    coordinator._forecast_pessimistic_kwh = blended.pessimistic_kwh
+    coordinator._forecast_sources = [
+        {
+            "name": s.name,
+            "production_kwh": round(s.production_kwh, 1),
+            "weight": s.weight,
+            "pessimistic_kwh": round(s.pessimistic_kwh, 1) if s.pessimistic_kwh else None,
+        }
+        for s in blended.sources
+    ]
     _LOGGER.info(
         "Forecast updated: %.1f kWh (blended from %d sources)",
         blended.blended_kwh,
@@ -286,6 +325,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
+    from homeassistant.components.frontend import async_remove_panel
+    async_remove_panel(hass, DOMAIN)
     return unload_ok
 
 
@@ -311,13 +352,27 @@ async def _execute_planner(hass: HomeAssistant, coordinator: SolarChargingCoordi
 
     tomorrow = forecast["tomorrow"]
 
-    # Read current state
-    tesla_soc = 50.0  # default
+    # Read Tesla SOC from configured sensor
+    tesla_soc = 50.0
     if data.get(CONF_TESLA_BATTERY_ENTITY):
         state = hass.states.get(data[CONF_TESLA_BATTERY_ENTITY])
         if state and state.state not in ("unknown", "unavailable"):
             try:
                 tesla_soc = float(state.state)
+            except (ValueError, TypeError):
+                pass
+
+    # Read charge limit from integration's own number entity
+    from homeassistant.helpers import entity_registry as er
+    registry = er.async_get(hass)
+    entry_id = coordinator._entry_id
+    target_soc = 80.0
+    charge_limit_entity = registry.async_get_entity_id("number", DOMAIN, f"{entry_id}_charge_limit")
+    if charge_limit_entity:
+        state = hass.states.get(charge_limit_entity)
+        if state and state.state not in ("unknown", "unavailable"):
+            try:
+                target_soc = float(state.state)
             except (ValueError, TypeError):
                 pass
 
@@ -329,28 +384,6 @@ async def _execute_planner(hass: HomeAssistant, coordinator: SolarChargingCoordi
                 home_battery_soc = float(state.state)
             except (ValueError, TypeError):
                 pass
-
-    # Read deadline from HA helpers (input_datetime + input_number)
-    target_soc = 80.0
-    deadline_entity = data.get(CONF_TESLA_DEADLINE_ENTITY)
-    target_soc_entity = data.get(CONF_TESLA_TARGET_SOC_ENTITY)
-    deadline_state = hass.states.get(deadline_entity) if deadline_entity else None
-    target_state = hass.states.get(target_soc_entity) if target_soc_entity else None
-
-    if target_state and target_state.state not in ("unknown", "unavailable"):
-        try:
-            target_soc = float(target_state.state)
-        except (ValueError, TypeError):
-            pass
-
-    hours_until_deadline = 48.0  # default 2 days
-    if deadline_state and deadline_state.state not in ("unknown", "unavailable"):
-        try:
-            deadline_dt = datetime.fromisoformat(deadline_state.state)
-            now = datetime.now()
-            hours_until_deadline = max(0, (deadline_dt - now).total_seconds() / 3600)
-        except (ValueError, TypeError):
-            pass
 
     # Get weather-aware correction factor from forecast tracker
     cloud_category = getattr(coordinator, 'cloud_strategy', "")
@@ -372,7 +405,6 @@ async def _execute_planner(hass: HomeAssistant, coordinator: SolarChargingCoordi
         home_battery_kwh=data.get(CONF_HOME_BATTERY_KWH, 10.0),
         home_battery_soc=home_battery_soc,
         avg_house_consumption_kwh=data.get(CONF_AVG_HOUSE_CONSUMPTION_KWH, DEFAULT_AVG_HOUSE_CONSUMPTION_KWH),
-        hours_until_deadline=hours_until_deadline,
         correction_factor=correction_factor,
         safety_margin=data.get(CONF_PLANNER_SAFETY_MARGIN, DEFAULT_PLANNER_SAFETY_MARGIN),
     )
