@@ -1,7 +1,7 @@
 """Constants for Tesla Solar Charging integration."""
 
 DOMAIN = "tesla_solar_charging"
-VERSION = "3.0.36"
+VERSION = "3.0.37"
 
 # Config keys — required sensor entities
 CONF_GRID_POWER_ENTITY = "grid_power_entity"
@@ -92,6 +92,15 @@ DEFAULT_FORECAST_SOLAR_AZIMUTH = 180
 
 # Config keys — appliance advisor
 CONF_APPLIANCES = "appliances"
+CONF_ENTRY_TYPE = "entry_type"
+ENTRY_TYPE_CHARGING = "charging"
+ENTRY_TYPE_ADVISOR = "advisor"
+
+# Advisor-specific config keys (grid/battery sensors needed independently)
+CONF_ADVISOR_GRID_POWER_ENTITY = "advisor_grid_power_entity"
+CONF_ADVISOR_GRID_VOLTAGE_ENTITY = "advisor_grid_voltage_entity"
+CONF_ADVISOR_BATTERY_SOC_ENTITY = "advisor_battery_soc_entity"
+CONF_ADVISOR_BATTERY_POWER_ENTITY = "advisor_battery_power_entity"
 
 # Config keys — forecast tracking
 CONF_DAILY_PRODUCTION_ENTITY = "daily_production_entity"

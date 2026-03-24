@@ -38,7 +38,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors from config entry."""
+    from .const import CONF_ENTRY_TYPE, ENTRY_TYPE_ADVISOR
+
     coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    # Advisor entry only creates advisor sensors
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_ADVISOR:
+        from .appliance_advisor.sensor import async_setup_advisor_sensors
+        await async_setup_advisor_sensors(hass, entry, async_add_entities, coordinator)
+        return
+
+    # Charging entry creates the standard sensors
     async_add_entities([
         StateSensor(coordinator, entry),
         AmpsSensor(coordinator, entry),
@@ -51,9 +61,6 @@ async def async_setup_entry(
         CloudStrategySensor(coordinator, entry),
         DebugSensor(coordinator, entry),
     ])
-
-    from .appliance_advisor.sensor import async_setup_advisor_sensors
-    await async_setup_advisor_sensors(hass, entry, async_add_entities, coordinator)
 
 
 def _eta_minutes(current_pct, target_pct, capacity_kwh, power_w):

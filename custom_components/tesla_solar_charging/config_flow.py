@@ -6,8 +6,15 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_ADVISOR_BATTERY_POWER_ENTITY,
+    CONF_ADVISOR_BATTERY_SOC_ENTITY,
+    CONF_ADVISOR_GRID_POWER_ENTITY,
+    CONF_ADVISOR_GRID_VOLTAGE_ENTITY,
     CONF_APPLIANCES,
     CONF_AVG_HOUSE_CONSUMPTION_KWH,
+    CONF_ENTRY_TYPE,
+    ENTRY_TYPE_ADVISOR,
+    ENTRY_TYPE_CHARGING,
     CONF_BATTERY_DISCHARGE_THRESHOLD,
     CONF_BATTERY_POWER_ENTITY,
     CONF_DAILY_PRODUCTION_ENTITY,
@@ -99,13 +106,131 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data = {}
 
     async def async_step_user(self, user_input=None):
-        """Step 1: Sensor and BLE entity selection."""
+        """Entry point — choose between Solar Charging or Appliance Advisor."""
         if user_input is not None:
-            self._data.update(user_input)
-            return await self.async_step_inverter()
+            entry_type = user_input.get("entry_type")
+            if entry_type == ENTRY_TYPE_ADVISOR:
+                return await self.async_step_advisor_sensors()
+            # Default: charging flow
+            return await self.async_step_charging_sensors()
 
         return self.async_show_form(
             step_id="user",
+            data_schema=vol.Schema({
+                vol.Required("entry_type", default=ENTRY_TYPE_CHARGING): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=[
+                        {"value": ENTRY_TYPE_CHARGING, "label": "Tesla Solar Charging"},
+                        {"value": ENTRY_TYPE_ADVISOR, "label": "Appliance Advisor"},
+                    ])
+                ),
+            }),
+        )
+
+    # --- Advisor config flow ---
+
+    async def async_step_advisor_sensors(self, user_input=None):
+        """Advisor: select grid/battery sensor entities."""
+        if user_input is not None:
+            self._data.update(user_input)
+            self._data[CONF_ENTRY_TYPE] = ENTRY_TYPE_ADVISOR
+            return await self.async_step_advisor_appliances()
+
+        return self.async_show_form(
+            step_id="advisor_sensors",
+            data_schema=vol.Schema({
+                vol.Required(CONF_ADVISOR_GRID_POWER_ENTITY): SENSOR_SELECTOR,
+                vol.Required(CONF_ADVISOR_GRID_VOLTAGE_ENTITY): SENSOR_SELECTOR,
+                vol.Required(CONF_ADVISOR_BATTERY_SOC_ENTITY): SENSOR_SELECTOR,
+                vol.Required(CONF_ADVISOR_BATTERY_POWER_ENTITY): SENSOR_SELECTOR,
+            }),
+        )
+
+    async def async_step_advisor_appliances(self, user_input=None):
+        """Advisor: manage appliances."""
+        appliances = dict(self._data.get(CONF_APPLIANCES, {}))
+
+        if user_input is not None:
+            action = user_input.get("action", "done")
+            if action == "done":
+                self._data[CONF_APPLIANCES] = appliances
+                return self.async_create_entry(
+                    title="Appliance Advisor",
+                    data=self._data,
+                )
+            if action == "add":
+                return await self.async_step_advisor_add()
+            if action.startswith("remove_"):
+                appliances.pop(action[7:], None)
+                self._data[CONF_APPLIANCES] = appliances
+                return await self.async_step_advisor_appliances()
+
+        options_list = [{"value": "done", "label": "Salva e chiudi"}]
+        options_list.append({"value": "add", "label": "+ Aggiungi elettrodomestico"})
+        for key, cfg in appliances.items():
+            options_list.append({"value": f"remove_{key}", "label": f"Rimuovi: {cfg.get('name', key)}"})
+
+        return self.async_show_form(
+            step_id="advisor_appliances",
+            data_schema=vol.Schema({
+                vol.Required("action", default="done"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=options_list, mode="list")
+                ),
+            }),
+        )
+
+    async def async_step_advisor_add(self, user_input=None):
+        """Advisor: add a new appliance."""
+        from .appliance_advisor.const import APPLIANCE_PRESETS
+
+        if user_input is not None:
+            preset_key = user_input.get("preset", "custom")
+            preset = APPLIANCE_PRESETS.get(preset_key, APPLIANCE_PRESETS["custom"])
+            name = user_input.get("name", preset["name"])
+            key = name.lower().replace(" ", "_").replace("'", "").replace("`", "")
+            appliances = dict(self._data.get(CONF_APPLIANCES, {}))
+            base_key = key
+            counter = 2
+            while key in appliances:
+                key = f"{base_key}_{counter}"
+                counter += 1
+            appliances[key] = {
+                "name": name,
+                "icon": preset["icon"],
+                "watts": user_input.get("watts", preset["watts"]),
+                "duration": user_input.get("duration", preset["duration"]),
+                "power_entity": user_input.get("power_entity") or None,
+            }
+            self._data[CONF_APPLIANCES] = appliances
+            return await self.async_step_advisor_appliances()
+
+        preset_options = [
+            {"value": k, "label": v["name"]}
+            for k, v in APPLIANCE_PRESETS.items()
+        ]
+        return self.async_show_form(
+            step_id="advisor_add",
+            data_schema=vol.Schema({
+                vol.Required("preset", default="custom"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=preset_options)
+                ),
+                vol.Required("name", default=""): str,
+                vol.Optional("watts", default=1500): vol.Coerce(int),
+                vol.Optional("duration", default=60): vol.Coerce(int),
+                vol.Optional("power_entity", default=""): SENSOR_SELECTOR,
+            }),
+        )
+
+    # --- Solar Charging config flow ---
+
+    async def async_step_charging_sensors(self, user_input=None):
+        """Charging Step 1: Sensor and BLE entity selection."""
+        if user_input is not None:
+            self._data.update(user_input)
+            self._data[CONF_ENTRY_TYPE] = ENTRY_TYPE_CHARGING
+            return await self.async_step_inverter()
+
+        return self.async_show_form(
+            step_id="charging_sensors",
             data_schema=vol.Schema({
                 # Required — Deye sensors
                 vol.Required(CONF_GRID_POWER_ENTITY): SENSOR_SELECTOR,
@@ -192,6 +317,9 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(config_entry):
+        entry_type = config_entry.data.get(CONF_ENTRY_TYPE, ENTRY_TYPE_CHARGING)
+        if entry_type == ENTRY_TYPE_ADVISOR:
+            return AdvisorOptionsFlow(config_entry)
         return TeslaSolarChargingOptionsFlow(config_entry)
 
 
@@ -259,7 +387,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
         """Step 3: Energy parameters."""
         if user_input is not None:
             self._options.update(user_input)
-            return await self.async_step_appliances()
+            return self.async_create_entry(title="", data=self._options)
 
         data = {**self._config_entry.data, **self._config_entry.options}
 
@@ -289,8 +417,18 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
             }),
         )
 
-    async def async_step_appliances(self, user_input=None):
-        """Step 4: Manage appliances for the advisor."""
+
+
+class AdvisorOptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for the Appliance Advisor entry."""
+
+    def __init__(self, config_entry):
+        self._config_entry = config_entry
+        self._options = {}
+        self._editing_key = None
+
+    async def async_step_init(self, user_input=None):
+        """Advisor options: manage appliances."""
         data = {**self._config_entry.data, **self._config_entry.options, **self._options}
         appliances = dict(data.get(CONF_APPLIANCES, {}))
 
@@ -302,10 +440,9 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
             if action == "add":
                 return await self.async_step_add_appliance()
             if action.startswith("remove_"):
-                key = action[7:]
-                appliances.pop(key, None)
+                appliances.pop(action[7:], None)
                 self._options[CONF_APPLIANCES] = appliances
-                return await self.async_step_appliances()
+                return await self.async_step_init()
             if action.startswith("edit_"):
                 self._editing_key = action[5:]
                 return await self.async_step_edit_appliance()
@@ -317,7 +454,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
             options_list.append({"value": f"remove_{key}", "label": f"Rimuovi: {cfg.get('name', key)}"})
 
         return self.async_show_form(
-            step_id="appliances",
+            step_id="init",
             data_schema=vol.Schema({
                 vol.Required("action", default="done"): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=options_list, mode="list")
@@ -341,7 +478,6 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
             while key in appliances:
                 key = f"{base_key}_{counter}"
                 counter += 1
-
             appliances[key] = {
                 "name": name,
                 "icon": preset["icon"],
@@ -350,12 +486,12 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 "power_entity": user_input.get("power_entity") or None,
             }
             self._options[CONF_APPLIANCES] = appliances
-            return await self.async_step_appliances()
+            return await self.async_step_init()
 
         preset_options = [
-            {"value": k, "label": v["name"]} for k, v in APPLIANCE_PRESETS.items()
+            {"value": k, "label": v["name"]}
+            for k, v in APPLIANCE_PRESETS.items()
         ]
-
         return self.async_show_form(
             step_id="add_appliance",
             data_schema=vol.Schema({
@@ -385,7 +521,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 "power_entity": user_input.get("power_entity") or None,
             }
             self._options[CONF_APPLIANCES] = appliances
-            return await self.async_step_appliances()
+            return await self.async_step_init()
 
         return self.async_show_form(
             step_id="edit_appliance",

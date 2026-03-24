@@ -65,8 +65,59 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tesla Solar Charging from a config entry."""
+    from .const import CONF_ENTRY_TYPE, ENTRY_TYPE_ADVISOR
+
     hass.data.setdefault(DOMAIN, {})
 
+    entry_type = entry.data.get(CONF_ENTRY_TYPE)
+    if entry_type == ENTRY_TYPE_ADVISOR:
+        return await _async_setup_advisor_entry(hass, entry)
+
+    return await _async_setup_charging_entry(hass, entry)
+
+
+async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up the Appliance Advisor entry."""
+    from .appliance_advisor.coordinator import AdvisorCoordinator
+    from .appliance_advisor.store import DeadlineStore
+
+    data = {**entry.data, **entry.options}
+
+    deadline_store = DeadlineStore(hass)
+    await deadline_store.async_load()
+
+    coordinator = AdvisorCoordinator(hass, entry.entry_id, data, deadline_store)
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    await coordinator.async_config_entry_first_refresh()
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+
+    # Register static path for the card
+    from homeassistant.components.http import StaticPathConfig
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(
+            f"/{DOMAIN}/appliance-advisor-card.js",
+            str(Path(__file__).parent / "frontend" / "appliance-advisor-card.js"),
+            cache_headers=True,
+        ),
+    ])
+
+    # Register service
+    async def handle_set_deadline(call):
+        appliance = call.data["appliance"]
+        dtype = call.data.get("type", "none")
+        dtime = call.data.get("time")
+        await deadline_store.async_set(appliance, dtype, dtime)
+
+    if not hass.services.has_service(DOMAIN, "set_appliance_deadline"):
+        hass.services.async_register(DOMAIN, "set_appliance_deadline", handle_set_deadline)
+
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    return True
+
+
+async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up the Tesla Solar Charging entry."""
     data = {**entry.data, **entry.options}
 
     ble = BLEController(
@@ -96,20 +147,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     pvgis_data = await fetch_pvgis_monthly(hass, hass.config.latitude, hass.config.longitude)
     if pvgis_data:
         tracker.set_monthly_baselines(pvgis_data)
-
-    # --- Appliance Advisor: deadline store + service ---
-    from .appliance_advisor.store import DeadlineStore
-    deadline_store = DeadlineStore(hass)
-    await deadline_store.async_load()
-    coordinator._deadline_store = deadline_store
-
-    async def handle_set_deadline(call):
-        appliance = call.data["appliance"]
-        dtype = call.data.get("type", "none")
-        dtime = call.data.get("time")
-        await deadline_store.async_set(appliance, dtype, dtime)
-
-    hass.services.async_register(DOMAIN, "set_appliance_deadline", handle_set_deadline)
 
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -341,13 +378,29 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    from .const import CONF_ENTRY_TYPE, ENTRY_TYPE_ADVISOR
+
+    entry_type = entry.data.get(CONF_ENTRY_TYPE)
+
+    if entry_type == ENTRY_TYPE_ADVISOR:
+        unload_ok = await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+        if unload_ok:
+            hass.data[DOMAIN].pop(entry.entry_id, None)
+        # Only remove service if no other advisor entries remain
+        advisor_entries = [
+            e for e in hass.config_entries.async_entries(DOMAIN)
+            if e.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_ADVISOR and e.entry_id != entry.entry_id
+        ]
+        if not advisor_entries:
+            hass.services.async_remove(DOMAIN, "set_appliance_deadline")
+        return unload_ok
+
+    # Charging entry
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
     from homeassistant.components.frontend import async_remove_panel
     async_remove_panel(hass, DOMAIN)
-    from .appliance_advisor import async_unload as advisor_unload
-    await advisor_unload(hass)
     return unload_ok
 
 

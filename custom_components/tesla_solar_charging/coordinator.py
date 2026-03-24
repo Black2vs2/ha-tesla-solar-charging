@@ -105,7 +105,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._last_grid_voltage = 0.0
         self._last_battery_soc = 0.0
         self._last_battery_power = 0.0
-        self._advisor_recommendations: dict | None = None
 
     # --- Public properties ---
 
@@ -210,9 +209,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._daily_solar_kwh = self._daily_grid_kwh = 0.0
         self._daily_peak_amps = self._daily_charge_seconds = 0
 
-    @property
-    def advisor_recommendations(self):
-        return self._advisor_recommendations
 
     # --- Helpers ---
 
@@ -298,31 +294,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
     # --- Main loop ---
 
     async def _async_update_data(self) -> dict:
-        # Read grid sensors unconditionally (needed for advisor even when disabled)
-        grid_power = self._get_float(self._entry_data[CONF_GRID_POWER_ENTITY])
-        grid_voltage = self._get_float(self._entry_data[CONF_GRID_VOLTAGE_ENTITY])
-
-        # Run appliance advisor regardless of charging state
-        if grid_power is not None and grid_voltage is not None:
-            try:
-                from .appliance_advisor import evaluate_all
-                deadline_data = {}
-                if hasattr(self, '_deadline_store') and self._deadline_store is not None:
-                    deadline_data = self._deadline_store.get_all()
-                batt_soc = self._get_float(self._entry_data.get(CONF_BATTERY_SOC_ENTITY)) or 0.0
-                batt_power = self._get_float(self._entry_data.get(CONF_BATTERY_POWER_ENTITY)) or 0.0
-                self._advisor_recommendations = evaluate_all(
-                    self.hass,
-                    self._entry_data,
-                    grid_power, grid_voltage,
-                    batt_soc, batt_power,
-                    self._current_amps,
-                    is_octopus_dispatching=self._is_octopus_dispatching(),
-                    deadline_data=deadline_data,
-                )
-            except Exception:
-                pass  # Advisor failure must never break charging
-
         if not self._enabled:
             return {}
 
