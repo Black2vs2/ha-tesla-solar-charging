@@ -4,3 +4,5 @@ __pycache__/
 .DS_Store
 settings.local.json
 docs
+.superpowers
+my-data

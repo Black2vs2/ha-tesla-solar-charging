@@ -52,6 +52,9 @@ async def async_setup_entry(
         DebugSensor(coordinator, entry),
     ])
 
+    from .appliance_advisor.sensor import async_setup_advisor_sensors
+    await async_setup_advisor_sensors(hass, entry, async_add_entities, coordinator)
+
 
 def _eta_minutes(current_pct, target_pct, capacity_kwh, power_w):
     """Estimate minutes to go from current_pct to target_pct at given power."""

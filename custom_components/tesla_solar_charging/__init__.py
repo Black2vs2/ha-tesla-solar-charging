@@ -97,6 +97,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if pvgis_data:
         tracker.set_monthly_baselines(pvgis_data)
 
+    # --- Appliance Advisor: deadline store + service ---
+    from .appliance_advisor.store import DeadlineStore
+    deadline_store = DeadlineStore(hass)
+    await deadline_store.async_load()
+    coordinator._deadline_store = deadline_store
+
+    async def handle_set_deadline(call):
+        appliance = call.data["appliance"]
+        dtype = call.data.get("type", "none")
+        dtime = call.data.get("time")
+        await deadline_store.async_set(appliance, dtype, dtime)
+
+    hass.services.async_register(DOMAIN, "set_appliance_deadline", handle_set_deadline)
+
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -104,9 +118,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from homeassistant.components.http import StaticPathConfig
     from homeassistant.components.frontend import async_register_built_in_panel
     frontend_path = Path(__file__).parent / "frontend"
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(f"/{DOMAIN}/panel", str(frontend_path), cache_headers=False)]
-    )
+    await hass.http.async_register_static_paths([
+        StaticPathConfig(f"/{DOMAIN}/panel", str(frontend_path), cache_headers=False),
+        StaticPathConfig(
+            f"/{DOMAIN}/appliance-advisor-card.js",
+            str(Path(__file__).parent / "frontend" / "appliance-advisor-card.js"),
+            cache_headers=True,
+        ),
+    ])
     async_register_built_in_panel(
         hass,
         component_name="custom",
@@ -327,6 +346,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
     from homeassistant.components.frontend import async_remove_panel
     async_remove_panel(hass, DOMAIN)
+    from .appliance_advisor import async_unload as advisor_unload
+    await advisor_unload(hass)
     return unload_ok
 
 

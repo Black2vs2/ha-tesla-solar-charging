@@ -1,0 +1,26 @@
+set_appliance_deadline:
+  name: Set Appliance Deadline
+  description: Set or clear a deadline for an appliance in the advisor.
+  fields:
+    appliance:
+      name: Appliance
+      description: The appliance key (e.g., "lavastoviglie_cucina_su")
+      required: true
+      selector:
+        text:
+    type:
+      name: Deadline Type
+      description: "finish_by", "start_by", or "none"
+      required: true
+      selector:
+        select:
+          options:
+            - "finish_by"
+            - "start_by"
+            - "none"
+    time:
+      name: Time
+      description: Deadline time in HH:MM format
+      required: false
+      selector:
+        time:

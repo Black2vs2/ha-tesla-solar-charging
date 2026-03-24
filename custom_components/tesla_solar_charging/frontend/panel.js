@@ -172,8 +172,37 @@ class TeslaSolarChargingPanel extends HTMLElement {
           border-radius: 2px;
         }
         .tsc-wide { grid-column: 1 / -1; }
+        .tsc-advisor-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+          margin-top: 4px;
+        }
+        .tsc-advisor-table th {
+          text-align: left;
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: 600;
+          opacity: 0.6;
+          border-bottom: 1px solid var(--divider-color, #eee);
+          white-space: nowrap;
+        }
+        .tsc-advisor-table td {
+          padding: 5px 8px;
+          border-bottom: 1px solid var(--divider-color, #eee);
+          vertical-align: middle;
+        }
+        .tsc-advisor-table tr:last-child td { border-bottom: none; }
+        .tsc-advisor-summary {
+          margin-top: 10px;
+          font-size: 13px;
+          font-weight: 500;
+          opacity: 0.85;
+        }
         @media (max-width: 700px) {
           .tsc-grid { grid-template-columns: 1fr; }
+          .tsc-advisor-table { font-size: 11px; }
+          .tsc-advisor-table th, .tsc-advisor-table td { padding: 4px 4px; }
         }
       </style>
       <div class="tsc-wrap">
@@ -231,6 +260,29 @@ class TeslaSolarChargingPanel extends HTMLElement {
             <div id="daily-rows"></div>
           </div>
 
+          <!-- Advisor Debug Card -->
+          <div class="tsc-card tsc-wide" id="card-advisor">
+            <h2>Advisor Debug <button id="tsc-advisor-copy-btn" style="float:right;font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--secondary-background-color,#f5f5f5);cursor:pointer">Copy JSON</button></h2>
+            <div id="advisor-summary" class="tsc-advisor-summary"></div>
+            <div id="advisor-table-wrap" style="overflow-x:auto;margin-top:8px">
+              <table class="tsc-advisor-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Cost</th>
+                    <th>Reason</th>
+                    <th>Running</th>
+                    <th>Watts</th>
+                    <th>Deadline</th>
+                    <th>Latest Start</th>
+                  </tr>
+                </thead>
+                <tbody id="advisor-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Debug Card -->
           <div class="tsc-card tsc-wide" id="card-debug">
             <h2>Debug JSON <button id="tsc-copy-btn" style="float:right;font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--secondary-background-color,#f5f5f5);cursor:pointer">Copy</button></h2>
@@ -239,12 +291,21 @@ class TeslaSolarChargingPanel extends HTMLElement {
         </div>
       </div>
     `;
-    // Copy button handler
+    // Copy button handler (main debug)
     this.querySelector("#tsc-copy-btn")?.addEventListener("click", () => {
       const json = this.querySelector("#debug-json")?.textContent || "";
       navigator.clipboard.writeText(json).then(() => {
         const btn = this.querySelector("#tsc-copy-btn");
         if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy", 2000); }
+      });
+    });
+    // Copy button handler (advisor debug)
+    this.querySelector("#tsc-advisor-copy-btn")?.addEventListener("click", () => {
+      const s = this._hass?.states["sensor.tesla_solar_charging_appliance_advisor_summary"];
+      const payload = s ? JSON.stringify({ state: s.state, attributes: s.attributes }, null, 2) : "{}";
+      navigator.clipboard.writeText(payload).then(() => {
+        const btn = this.querySelector("#tsc-advisor-copy-btn");
+        if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy JSON", 2000); }
       });
     });
   }
@@ -519,6 +580,42 @@ class TeslaSolarChargingPanel extends HTMLElement {
         this._row("Plan", this._val("sensor.plan")),
         this._row("Plan Detail", `<span style="font-size:11px">${this._hass.states["sensor.plan"]?.attributes?.detail || "No plan yet (runs at planning time)"}</span>`),
       ].join("");
+    }
+
+    // Advisor Debug
+    const advisorState = this._hass.states["sensor.tesla_solar_charging_appliance_advisor_summary"];
+    const advisorSummaryEl = this.querySelector("#advisor-summary");
+    const advisorTbody = this.querySelector("#advisor-tbody");
+    if (advisorSummaryEl) {
+      advisorSummaryEl.textContent = advisorState ? advisorState.state : "No advisor data";
+    }
+    if (advisorTbody) {
+      const appliances = advisorState?.attributes?.appliances || [];
+      if (appliances.length === 0) {
+        advisorTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;opacity:0.5;padding:12px">No appliance data available</td></tr>`;
+      } else {
+        const statusColor = { free: "green", paid: "orange", skipped: "grey", running: "blue", error: "red" };
+        advisorTbody.innerHTML = appliances.map(a => {
+          const cls = statusColor[a.status] || "grey";
+          const badge = `<span class="tsc-badge ${cls}">${a.status ?? "?"}</span>`;
+          const running = a.running != null ? (a.running ? '<span class="tsc-badge blue">Yes</span>' : '<span class="tsc-badge grey">No</span>') : "N/A";
+          const cost = a.cost != null ? `${a.cost}` : "N/A";
+          const watts = a.watts != null ? `${a.watts}W` : "N/A";
+          const deadline = a.deadline ?? "—";
+          const latestStart = a.latest_start ?? "—";
+          const reason = `<span style="font-size:11px;opacity:0.8">${a.reason ?? ""}</span>`;
+          return `<tr>
+            <td><b>${a.name ?? "?"}</b></td>
+            <td>${badge}</td>
+            <td>${cost}</td>
+            <td>${reason}</td>
+            <td>${running}</td>
+            <td>${watts}</td>
+            <td>${deadline}</td>
+            <td>${latestStart}</td>
+          </tr>`;
+        }).join("");
+      }
     }
 
     // Debug JSON

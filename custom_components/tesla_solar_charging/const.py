@@ -1,7 +1,7 @@
 """Constants for Tesla Solar Charging integration."""
 
 DOMAIN = "tesla_solar_charging"
-VERSION = "3.0.27"
+VERSION = "3.0.36"
 
 # Config keys — required sensor entities
 CONF_GRID_POWER_ENTITY = "grid_power_entity"
@@ -89,6 +89,9 @@ CONF_FORECAST_SOLAR_DECLINATION = "forecast_solar_declination"
 CONF_FORECAST_SOLAR_AZIMUTH = "forecast_solar_azimuth"
 DEFAULT_FORECAST_SOLAR_DECLINATION = 30
 DEFAULT_FORECAST_SOLAR_AZIMUTH = 180
+
+# Config keys — appliance advisor
+CONF_APPLIANCES = "appliances"
 
 # Config keys — forecast tracking
 CONF_DAILY_PRODUCTION_ENTITY = "daily_production_entity"

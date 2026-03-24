@@ -105,6 +105,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._last_grid_voltage = 0.0
         self._last_battery_soc = 0.0
         self._last_battery_power = 0.0
+        self._advisor_recommendations: dict | None = None
 
     # --- Public properties ---
 
@@ -209,6 +210,10 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._daily_solar_kwh = self._daily_grid_kwh = 0.0
         self._daily_peak_amps = self._daily_charge_seconds = 0
 
+    @property
+    def advisor_recommendations(self):
+        return self._advisor_recommendations
+
     # --- Helpers ---
 
     async def _notify(self, message: str) -> None:
@@ -293,6 +298,31 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
     # --- Main loop ---
 
     async def _async_update_data(self) -> dict:
+        # Read grid sensors unconditionally (needed for advisor even when disabled)
+        grid_power = self._get_float(self._entry_data[CONF_GRID_POWER_ENTITY])
+        grid_voltage = self._get_float(self._entry_data[CONF_GRID_VOLTAGE_ENTITY])
+
+        # Run appliance advisor regardless of charging state
+        if grid_power is not None and grid_voltage is not None:
+            try:
+                from .appliance_advisor import evaluate_all
+                deadline_data = {}
+                if hasattr(self, '_deadline_store') and self._deadline_store is not None:
+                    deadline_data = self._deadline_store.get_all()
+                batt_soc = self._get_float(self._entry_data.get(CONF_BATTERY_SOC_ENTITY)) or 0.0
+                batt_power = self._get_float(self._entry_data.get(CONF_BATTERY_POWER_ENTITY)) or 0.0
+                self._advisor_recommendations = evaluate_all(
+                    self.hass,
+                    self._entry_data,
+                    grid_power, grid_voltage,
+                    batt_soc, batt_power,
+                    self._current_amps,
+                    is_octopus_dispatching=self._is_octopus_dispatching(),
+                    deadline_data=deadline_data,
+                )
+            except Exception:
+                pass  # Advisor failure must never break charging
+
         if not self._enabled:
             return {}
 
@@ -317,10 +347,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("Car plugged in — force charge reset")
         self._prev_charger_connected = charger_connected
 
-        # Read grid sensors (needed for both modes)
-        grid_power = self._get_float(self._entry_data[CONF_GRID_POWER_ENTITY])
-        grid_voltage = self._get_float(self._entry_data[CONF_GRID_VOLTAGE_ENTITY])
-
         if grid_power is None or grid_voltage is None:
             self._state = STATE_ERROR
             self._reason = "Grid sensors unavailable"
@@ -335,6 +361,14 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 await self._exit_night_mode()
             await self._handle_solar_mode(grid_power, grid_voltage)
         else:
+            # Nighttime, no Octopus dispatch — stop charging unless force is on
+            if self._is_charger_on() and not self._force_charge:
+                try:
+                    await self._ble.stop_charging()
+                    self._current_amps = 0
+                    _LOGGER.info("Night: stopped charging (no force charge, no dispatch)")
+                except Exception as err:
+                    _LOGGER.error("Night stop BLE failed: %s", err)
             self._state = STATE_WAITING
             self._reason = "Nighttime — waiting for sunrise"
 
@@ -478,10 +512,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 await self._ble.start_charging()
                 self._state = STATE_CHARGING_SOLAR
                 self._current_amps = decision.target_amps
-                await self.hass.services.async_call(
-                    "persistent_notification", "create",
-                    {"title": "Tesla Solar Charging", "message": f"Started: {decision.reason}"},
-                )
             elif decision.action == Action.STOP:
                 await self._ble.stop_charging()
                 self._state = STATE_STOPPED
@@ -495,10 +525,6 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 else:
                     from .notification import format_charge_stopped
                     await self._notify(format_charge_stopped(decision.reason))
-                await self.hass.services.async_call(
-                    "persistent_notification", "create",
-                    {"title": "Tesla Solar Charging", "message": f"Stopped: {decision.reason}"},
-                )
             elif decision.action == Action.ADJUST:
                 if decision.target_amps != int(sensor_state.current_amps):
                     await self._ble.set_charging_amps(decision.target_amps)

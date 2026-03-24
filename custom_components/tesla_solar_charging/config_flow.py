@@ -6,6 +6,7 @@ from homeassistant import config_entries
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_APPLIANCES,
     CONF_AVG_HOUSE_CONSUMPTION_KWH,
     CONF_BATTERY_DISCHARGE_THRESHOLD,
     CONF_BATTERY_POWER_ENTITY,
@@ -258,7 +259,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
         """Step 3: Energy parameters."""
         if user_input is not None:
             self._options.update(user_input)
-            return self.async_create_entry(title="", data=self._options)
+            return await self.async_step_appliances()
 
         data = {**self._config_entry.data, **self._config_entry.options}
 
@@ -285,5 +286,113 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_FORECAST_SOLAR_ENABLED, default=data.get(CONF_FORECAST_SOLAR_ENABLED, False)): bool,
                 vol.Optional(CONF_FORECAST_SOLAR_DECLINATION, default=data.get(CONF_FORECAST_SOLAR_DECLINATION, DEFAULT_FORECAST_SOLAR_DECLINATION)): vol.Coerce(int),
                 vol.Optional(CONF_FORECAST_SOLAR_AZIMUTH, default=data.get(CONF_FORECAST_SOLAR_AZIMUTH, DEFAULT_FORECAST_SOLAR_AZIMUTH)): vol.Coerce(int),
+            }),
+        )
+
+    async def async_step_appliances(self, user_input=None):
+        """Step 4: Manage appliances for the advisor."""
+        data = {**self._config_entry.data, **self._config_entry.options, **self._options}
+        appliances = dict(data.get(CONF_APPLIANCES, {}))
+
+        if user_input is not None:
+            action = user_input.get("action", "done")
+            if action == "done":
+                self._options[CONF_APPLIANCES] = appliances
+                return self.async_create_entry(title="", data=self._options)
+            if action == "add":
+                return await self.async_step_add_appliance()
+            if action.startswith("remove_"):
+                key = action[7:]
+                appliances.pop(key, None)
+                self._options[CONF_APPLIANCES] = appliances
+                return await self.async_step_appliances()
+            if action.startswith("edit_"):
+                self._editing_key = action[5:]
+                return await self.async_step_edit_appliance()
+
+        options_list = [{"value": "done", "label": "Salva e chiudi"}]
+        options_list.append({"value": "add", "label": "+ Aggiungi elettrodomestico"})
+        for key, cfg in appliances.items():
+            options_list.append({"value": f"edit_{key}", "label": f"Modifica: {cfg.get('name', key)}"})
+            options_list.append({"value": f"remove_{key}", "label": f"Rimuovi: {cfg.get('name', key)}"})
+
+        return self.async_show_form(
+            step_id="appliances",
+            data_schema=vol.Schema({
+                vol.Required("action", default="done"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=options_list, mode="list")
+                ),
+            }),
+        )
+
+    async def async_step_add_appliance(self, user_input=None):
+        """Add a new appliance from a preset."""
+        from .appliance_advisor.const import APPLIANCE_PRESETS
+
+        if user_input is not None:
+            preset_key = user_input.get("preset", "custom")
+            preset = APPLIANCE_PRESETS.get(preset_key, APPLIANCE_PRESETS["custom"])
+            name = user_input.get("name", preset["name"])
+            key = name.lower().replace(" ", "_").replace("'", "").replace("`", "")
+            data = {**self._config_entry.data, **self._config_entry.options, **self._options}
+            appliances = dict(data.get(CONF_APPLIANCES, {}))
+            base_key = key
+            counter = 2
+            while key in appliances:
+                key = f"{base_key}_{counter}"
+                counter += 1
+
+            appliances[key] = {
+                "name": name,
+                "icon": preset["icon"],
+                "watts": user_input.get("watts", preset["watts"]),
+                "duration": user_input.get("duration", preset["duration"]),
+                "power_entity": user_input.get("power_entity") or None,
+            }
+            self._options[CONF_APPLIANCES] = appliances
+            return await self.async_step_appliances()
+
+        preset_options = [
+            {"value": k, "label": v["name"]} for k, v in APPLIANCE_PRESETS.items()
+        ]
+
+        return self.async_show_form(
+            step_id="add_appliance",
+            data_schema=vol.Schema({
+                vol.Required("preset", default="custom"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=preset_options)
+                ),
+                vol.Required("name", default=""): str,
+                vol.Optional("watts", default=1500): vol.Coerce(int),
+                vol.Optional("duration", default=60): vol.Coerce(int),
+                vol.Optional("power_entity", default=""): SENSOR_SELECTOR,
+            }),
+        )
+
+    async def async_step_edit_appliance(self, user_input=None):
+        """Edit an existing appliance."""
+        data = {**self._config_entry.data, **self._config_entry.options, **self._options}
+        appliances = dict(data.get(CONF_APPLIANCES, {}))
+        key = self._editing_key
+        current = appliances.get(key, {})
+
+        if user_input is not None:
+            appliances[key] = {
+                "name": user_input.get("name", current.get("name", key)),
+                "icon": current.get("icon", "\U0001f50c"),
+                "watts": user_input.get("watts", current.get("watts", 1500)),
+                "duration": user_input.get("duration", current.get("duration", 0)),
+                "power_entity": user_input.get("power_entity") or None,
+            }
+            self._options[CONF_APPLIANCES] = appliances
+            return await self.async_step_appliances()
+
+        return self.async_show_form(
+            step_id="edit_appliance",
+            data_schema=vol.Schema({
+                vol.Required("name", default=current.get("name", key)): str,
+                vol.Optional("watts", default=current.get("watts", 1500)): vol.Coerce(int),
+                vol.Optional("duration", default=current.get("duration", 0)): vol.Coerce(int),
+                vol.Optional("power_entity", default=current.get("power_entity", "")): SENSOR_SELECTOR,
             }),
         )
