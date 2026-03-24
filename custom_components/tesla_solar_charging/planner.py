@@ -19,7 +19,6 @@ class ChargePlan:
     forecast_production_kwh: float
     forecast_excess_kwh: float
     sunshine_hours: float
-    days_until_deadline: float
 
 
 def create_charge_plan(
@@ -32,7 +31,6 @@ def create_charge_plan(
     home_battery_kwh: float,
     home_battery_soc: float,
     avg_house_consumption_kwh: float,
-    hours_until_deadline: float,
     correction_factor: float = 1.0,
     safety_margin: float = 1.0,
 ) -> ChargePlan:
@@ -50,8 +48,6 @@ def create_charge_plan(
         production, home_battery_kwh, home_battery_soc, avg_house_consumption_kwh
     )
 
-    days_until_deadline = hours_until_deadline / 24
-
     # Decision logic
     if kwh_needed <= 0:
         return ChargePlan(
@@ -63,21 +59,6 @@ def create_charge_plan(
             forecast_production_kwh=production,
             forecast_excess_kwh=excess,
             sunshine_hours=sunshine_hours,
-            days_until_deadline=days_until_deadline,
-        )
-
-    # If deadline is very soon (< 18 hours), charge tonight to be safe
-    if hours_until_deadline < 18:
-        return ChargePlan(
-            charge_tonight=True,
-            reason=f"Deadline in {hours_until_deadline:.0f}h — charging tonight to be safe",
-            tesla_current_soc=tesla_soc,
-            tesla_target_soc=target_soc,
-            kwh_needed=round(kwh_needed, 1),
-            forecast_production_kwh=production,
-            forecast_excess_kwh=excess,
-            sunshine_hours=sunshine_hours,
-            days_until_deadline=days_until_deadline,
         )
 
     # If solar excess can cover what we need, skip night charging
@@ -91,24 +72,9 @@ def create_charge_plan(
             forecast_production_kwh=production,
             forecast_excess_kwh=excess,
             sunshine_hours=sunshine_hours,
-            days_until_deadline=days_until_deadline,
         )
 
-    # If we have multiple days, check if partial solar + next night could work
-    if days_until_deadline > 1.5 and excess > kwh_needed * 0.5 * safety_margin:
-        return ChargePlan(
-            charge_tonight=False,
-            reason=f"Deadline in {days_until_deadline:.1f} days, solar covers {excess:.1f}/{kwh_needed:.1f} kWh — can catch up tomorrow",
-            tesla_current_soc=tesla_soc,
-            tesla_target_soc=target_soc,
-            kwh_needed=round(kwh_needed, 1),
-            forecast_production_kwh=production,
-            forecast_excess_kwh=excess,
-            sunshine_hours=sunshine_hours,
-            days_until_deadline=days_until_deadline,
-        )
-
-    # Poor forecast or tight deadline — charge tonight
+    # Poor forecast — charge tonight
     return ChargePlan(
         charge_tonight=True,
         reason=f"Insufficient solar: {excess:.1f} kWh excess vs {kwh_needed:.1f} kWh needed",
@@ -118,7 +84,6 @@ def create_charge_plan(
         forecast_production_kwh=production,
         forecast_excess_kwh=excess,
         sunshine_hours=sunshine_hours,
-        days_until_deadline=days_until_deadline,
     )
 
 
@@ -131,7 +96,6 @@ def format_plan_message(plan: ChargePlan) -> str:
         f"*Tesla Charging Plan*",
         f"",
         f"Car: {plan.tesla_current_soc:.0f}% → target {plan.tesla_target_soc:.0f}% ({plan.kwh_needed:.1f} kWh needed)",
-        f"Deadline: {plan.days_until_deadline:.1f} days",
         f"",
         f"Tomorrow: {weather} ({plan.sunshine_hours:.0f}h sun)",
         f"Expected solar: {plan.forecast_production_kwh:.0f} kWh",

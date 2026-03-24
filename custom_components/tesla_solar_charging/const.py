@@ -1,7 +1,7 @@
 """Constants for Tesla Solar Charging integration."""
 
 DOMAIN = "tesla_solar_charging"
-VERSION = "3.0.3"
+VERSION = "3.0.26"
 
 # Config keys — required sensor entities
 CONF_GRID_POWER_ENTITY = "grid_power_entity"
@@ -13,6 +13,7 @@ CONF_BATTERY_POWER_ENTITY = "battery_power_entity"
 CONF_BLE_CHARGER_SWITCH = "ble_charger_switch"
 CONF_BLE_CHARGING_AMPS = "ble_charging_amps"
 CONF_BLE_WAKE_BUTTON = "ble_wake_button"
+CONF_BLE_CHARGE_LIMIT = "ble_charge_limit"
 
 # Config keys — optional entities
 CONF_TESLA_LOCATION_ENTITY = "tesla_location_entity"
@@ -126,4 +127,4 @@ DEYE_ENERGY_PATTERN_BATTERY_FIRST = "Battery first"
 DEYE_ENERGY_PATTERN_LOAD_FIRST = "Load first"
 
 # Platforms
-PLATFORMS = ["switch", "sensor"]
+PLATFORMS = ["switch", "sensor", "number"]
