@@ -76,9 +76,6 @@ class AdvisorCoordinator(DataUpdateCoordinator):
         grid_power = self._get_float(self._entry_data.get(CONF_ADVISOR_GRID_POWER_ENTITY, ""))
         grid_voltage = self._get_float(self._entry_data.get(CONF_ADVISOR_GRID_VOLTAGE_ENTITY, ""))
 
-        if grid_power is None or grid_voltage is None:
-            return {}
-
         batt_soc = self._get_float(self._entry_data.get(CONF_ADVISOR_BATTERY_SOC_ENTITY, "")) or 0.0
         batt_power = self._get_float(self._entry_data.get(CONF_ADVISOR_BATTERY_POWER_ENTITY, "")) or 0.0
 
@@ -97,11 +94,12 @@ class AdvisorCoordinator(DataUpdateCoordinator):
         if self._run_history_store:
             await self._track_run_history(merged_data)
 
+        # Use 0.0 defaults if sensors unavailable — appliances still show with "red" status
         try:
             self._advisor_recommendations = evaluate_all(
                 self.hass,
                 merged_data,
-                grid_power, grid_voltage,
+                grid_power or 0.0, grid_voltage or 230.0,
                 batt_soc, batt_power,
                 current_amps=0.0,
                 deadline_data=deadline_data,
