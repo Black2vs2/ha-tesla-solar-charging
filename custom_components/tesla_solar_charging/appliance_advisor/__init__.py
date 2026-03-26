@@ -52,7 +52,8 @@ def get_running_states(hass, appliances: list[ApplianceConfig]) -> dict[str, tup
 def evaluate_all(hass, options: dict, grid_power: float, grid_voltage: float,
                  battery_soc: float, battery_power: float, current_amps: float,
                  is_octopus_dispatching: bool = False, solar_w: float | None = None,
-                 deadline_data: dict | None = None) -> dict:
+                 deadline_data: dict | None = None,
+                 run_history_store=None) -> dict:
     energy = build_energy_state(grid_power, grid_voltage, battery_soc, battery_power, current_amps, solar_w)
     appliances = build_appliance_list(options)
     running_states = get_running_states(hass, appliances)
@@ -71,6 +72,16 @@ def evaluate_all(hass, options: dict, grid_power: float, grid_voltage: float,
                 duration = app.duration_minutes
                 break
         apply_deadline(rec, deadline, duration, now_str)
+
+        # Attach run history data
+        if run_history_store:
+            last_run = run_history_store.get_last_run(rec.appliance_key)
+            if last_run:
+                rec.last_run_end = last_run.get("end")
+                rec.last_run_kwh = last_run.get("energy_kwh")
+                rec.last_run_duration_min = last_run.get("duration_min")
+            rec.avg_consumption_kwh = run_history_store.get_avg_consumption_kwh(rec.appliance_key)
+
         result[rec.appliance_key] = rec
     return result
 

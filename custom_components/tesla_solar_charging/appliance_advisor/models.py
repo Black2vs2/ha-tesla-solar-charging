@@ -48,3 +48,7 @@ class Recommendation:
     current_watts: float | None = None
     deadline_message: str | None = None
     latest_start_time: str | None = None
+    last_run_end: str | None = None
+    last_run_kwh: float | None = None
+    last_run_duration_min: float | None = None
+    avg_consumption_kwh: float | None = None

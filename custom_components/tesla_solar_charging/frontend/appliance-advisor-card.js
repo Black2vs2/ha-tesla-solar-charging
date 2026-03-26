@@ -191,6 +191,17 @@ class ApplianceAdvisorCard extends HTMLElement {
         .aa-app-deadline.urgent { color: #c62828; animation: aa-pulse-text 1s ease-in-out infinite alternate; }
         .aa-app-deadline.missed { color: #9e9e9e; }
 
+        .aa-app-history {
+          font-size: 12px;
+          color: var(--secondary-text-color, #888);
+          margin-top: 4px;
+          line-height: 1.4;
+        }
+        .aa-app-history-icon {
+          font-size: 11px;
+          opacity: 0.7;
+        }
+
         /* Pulsing glow for running appliances */
         @keyframes aa-running-glow {
           0%   { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.3), 0 0 0 0 rgba(67,160,71,0); }
@@ -514,6 +525,19 @@ class ApplianceAdvisorCard extends HTMLElement {
         ? `<div class="aa-app-watts"><span class="aa-running-dot"></span>${Math.round(app.current_watts)} W</div>`
         : "";
 
+      // Run history
+      let historyHtml = "";
+      const parts = [];
+      if (app.last_run_end) {
+        parts.push(`<span class="aa-app-history-icon">🕐</span> ${this._formatTimeAgo(app.last_run_end)}`);
+      }
+      if (app.avg_consumption_kwh != null) {
+        parts.push(`<span class="aa-app-history-icon">⚡</span> ${app.avg_consumption_kwh} kWh media`);
+      }
+      if (parts.length > 0) {
+        historyHtml = `<div class="aa-app-history">${parts.join(" · ")}</div>`;
+      }
+
       return `
         <div class="aa-appliance ${statusClass}${runningClass}${lastRowClass}"
              data-key="${this._esc(app.key || "")}"
@@ -524,6 +548,7 @@ class ApplianceAdvisorCard extends HTMLElement {
           <div class="aa-app-name">${name}</div>
           ${costHtml}
           ${wattsHtml}
+          ${historyHtml}
         </div>`;
     }).join("");
 
@@ -681,6 +706,31 @@ class ApplianceAdvisorCard extends HTMLElement {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  /**
+   * Format an ISO datetime string as a relative "time ago" label in Italian.
+   */
+  _formatTimeAgo(isoStr) {
+    if (!isoStr) return "";
+    try {
+      const date = new Date(isoStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMin = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMin < 1) return "adesso";
+      if (diffMin < 60) return `${diffMin} min fa`;
+      if (diffHours < 24) return `${diffHours}h fa`;
+      if (diffDays === 1) return "ieri";
+      if (diffDays < 7) return `${diffDays}g fa`;
+      // Show date for older runs
+      return date.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+    } catch {
+      return "";
+    }
   }
 
   /**

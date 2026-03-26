@@ -41,6 +41,10 @@ class AdvisorApplianceSensor(CoordinatorEntity, SensorEntity):
             "current_watts": rec.current_watts,
             "deadline_message": rec.deadline_message,
             "latest_start_time": rec.latest_start_time,
+            "last_run_end": rec.last_run_end,
+            "last_run_kwh": rec.last_run_kwh,
+            "last_run_duration_min": rec.last_run_duration_min,
+            "avg_consumption_kwh": rec.avg_consumption_kwh,
         }
 
 
@@ -79,6 +83,10 @@ class AdvisorSummarySensor(CoordinatorEntity, SensorEntity):
                     "current_watts": r.current_watts,
                     "deadline_message": r.deadline_message,
                     "latest_start_time": r.latest_start_time,
+                    "last_run_end": r.last_run_end,
+                    "last_run_kwh": r.last_run_kwh,
+                    "last_run_duration_min": r.last_run_duration_min,
+                    "avg_consumption_kwh": r.avg_consumption_kwh,
                 }
                 for r in recs.values()
             ]

@@ -1,6 +1,14 @@
 {
   "config": {
     "step": {
+      "advisor_sensors": {
+        "title": "Appliance Advisor — Sensori",
+        "description": "Seleziona i sensori per griglia e batteria."
+      },
+      "advisor_appliances": {
+        "title": "Appliance Advisor — Elettrodomestici",
+        "description": "Seleziona gli elettrodomestici da monitorare. Potrai personalizzare watt e sensore di consumo nelle opzioni."
+      },
       "user": {
         "title": "Tesla Solar Charging — Sensors & BLE",
         "description": "Configure sensor entities and Tesla BLE controls.",

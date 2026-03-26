@@ -80,13 +80,17 @@ async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) ->
     """Set up the Appliance Advisor entry."""
     from .appliance_advisor.coordinator import AdvisorCoordinator
     from .appliance_advisor.store import DeadlineStore
+    from .appliance_advisor.run_history_store import RunHistoryStore
 
     data = {**entry.data, **entry.options}
 
     deadline_store = DeadlineStore(hass)
     await deadline_store.async_load()
 
-    coordinator = AdvisorCoordinator(hass, entry.entry_id, data, deadline_store)
+    run_history_store = RunHistoryStore(hass)
+    await run_history_store.async_load()
+
+    coordinator = AdvisorCoordinator(hass, entry.entry_id, data, deadline_store, run_history_store)
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await coordinator.async_config_entry_first_refresh()
