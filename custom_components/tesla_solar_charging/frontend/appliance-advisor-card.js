@@ -1,29 +1,25 @@
 /**
  * Appliance Advisor Card — Custom Lovelace card for Home Assistant
  *
- * Reads all appliance data from the summary sensor's attributes.
- * No hardcoded appliance names or icons.
- *
  * Card YAML config:
  *   type: custom:appliance-advisor-card
- *   entity: sensor.tesla_solar_charging_appliance_advisor_summary
+ *   entity: sensor.appliance_advisor_summary_2
  *   solar_entity: sensor.solar_production
  *   battery_soc_entity: sensor.esp32_deye_inverter_battery_soc
  *   tesla_soc_entity: sensor.tesla_di_luca_battery
+ *   tesla_state_entity: sensor.tesla_solar_charging_state
+ *   tesla_amps_entity: sensor.tesla_solar_charging_charging_amps
+ *   tesla_charge_limit_entity: number.tesla_solar_charging_charge_limit
+ *   tesla_battery_kwh: 75
  *   navigation:
  *     - label: "Dettaglio"
  *       path: /dashboard-consumi/dettaglio-consumi-nuovo
  */
 
 class ApplianceAdvisorCard extends HTMLElement {
-  // ---------------------------------------------------------------------------
-  // HA lifecycle: setConfig is called first, then hass is set on every update
-  // ---------------------------------------------------------------------------
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error("appliance-advisor-card: 'entity' is required");
-    }
+    if (!config.entity) throw new Error("appliance-advisor-card: 'entity' is required");
     this._config = config;
   }
 
@@ -37,23 +33,11 @@ class ApplianceAdvisorCard extends HTMLElement {
     this._update();
   }
 
-  getCardSize() {
-    return 6;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Shadow DOM setup
-  // ---------------------------------------------------------------------------
+  getCardSize() { return 10; }
 
   _attachShadow() {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
-    }
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
   }
-
-  // ---------------------------------------------------------------------------
-  // Initial render — injects static HTML + CSS into shadow DOM
-  // ---------------------------------------------------------------------------
 
   _render() {
     this.shadowRoot.innerHTML = `
@@ -62,268 +46,180 @@ class ApplianceAdvisorCard extends HTMLElement {
           display: block;
           font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
         }
-
-        /* ---- Outer card shell ---- */
         .aa-card {
           background: var(--ha-card-background, var(--card-background-color, #fff));
-          border-radius: 16px;
-          overflow: hidden;
+          border-radius: 16px; overflow: hidden;
           box-shadow: var(--ha-card-box-shadow, 0 2px 8px rgba(0,0,0,.12));
           color: var(--primary-text-color, #333);
         }
 
-        /* ---- Status banner ---- */
-        .aa-banner {
-          padding: 20px 20px 16px;
-          transition: background 0.6s ease;
-        }
+        /* ---- Banner ---- */
+        .aa-banner { padding: 20px 20px 16px; transition: background 0.6s ease; }
         .aa-banner-label {
-          font-size: 13px;
-          font-weight: 700;
-          letter-spacing: 1.5px;
-          text-transform: uppercase;
-          opacity: 0.75;
-          color: #fff;
-          margin-bottom: 4px;
+          font-size: 13px; font-weight: 700; letter-spacing: 1.5px;
+          text-transform: uppercase; opacity: 0.75; color: #fff; margin-bottom: 4px;
         }
         .aa-banner-status {
-          font-size: 32px;
-          font-weight: 700;
-          color: #fff;
-          line-height: 1.15;
-          text-shadow: 0 1px 4px rgba(0,0,0,.25);
+          font-size: 28px; font-weight: 700; color: #fff;
+          line-height: 1.15; text-shadow: 0 1px 4px rgba(0,0,0,.25);
         }
 
-        /* ---- Three metric chips ---- */
-        .aa-metrics {
-          display: flex;
-          gap: 12px;
-          margin-top: 16px;
-          flex-wrap: wrap;
-        }
+        /* ---- Metrics ---- */
+        .aa-metrics { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
         .aa-metric {
-          background: rgba(255,255,255,0.18);
-          border-radius: 12px;
-          padding: 8px 16px;
-          flex: 1;
-          min-width: 80px;
-          text-align: center;
+          background: rgba(255,255,255,0.18); border-radius: 10px;
+          padding: 6px 14px; flex: 1; min-width: 70px; text-align: center;
         }
         .aa-metric-label {
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 1px;
-          text-transform: uppercase;
-          color: rgba(255,255,255,0.8);
-          margin-bottom: 2px;
+          font-size: 10px; font-weight: 700; letter-spacing: 1px;
+          text-transform: uppercase; color: rgba(255,255,255,0.8); margin-bottom: 1px;
         }
         .aa-metric-value {
-          font-size: 26px;
-          font-weight: 700;
-          color: #fff;
-          line-height: 1.15;
-          text-shadow: 0 1px 3px rgba(0,0,0,.2);
+          font-size: 22px; font-weight: 700; color: #fff;
+          line-height: 1.15; text-shadow: 0 1px 3px rgba(0,0,0,.2);
         }
 
-        /* ---- Appliance grid ---- */
-        .aa-appliances {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0;
-        }
-        .aa-appliance {
-          padding: 16px 14px 14px;
+        /* ---- Tesla section ---- */
+        .aa-tesla {
+          display: flex; align-items: center; gap: 14px;
+          padding: 14px 16px;
           border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.08));
-          border-right: 1px solid var(--divider-color, rgba(0,0,0,.08));
-          cursor: pointer;
+          background: var(--secondary-background-color, rgba(0,0,0,.02));
+        }
+        .aa-tesla-icon { font-size: 28px; flex-shrink: 0; }
+        .aa-tesla-body { flex: 1; }
+        .aa-tesla-header {
+          display: flex; align-items: center; gap: 8px; margin-bottom: 2px;
+        }
+        .aa-tesla-name { font-size: 16px; font-weight: 600; }
+        .aa-tesla-badge {
+          font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+          letter-spacing: 0.5px; text-transform: uppercase;
+        }
+        .aa-tesla-badge.charging { background: #e3f2fd; color: #1565c0; }
+        .aa-tesla-badge.idle     { background: #f5f5f5; color: #757575; }
+        .aa-tesla-badge.full     { background: #e8f5e9; color: #2e7d32; }
+        .aa-tesla-detail {
+          font-size: 13px; color: var(--secondary-text-color, #888);
+        }
+        .aa-tesla-charging-bar {
+          margin-top: 6px; height: 6px; border-radius: 3px;
+          background: var(--divider-color, #e0e0e0); overflow: hidden;
+        }
+        .aa-tesla-charging-fill {
+          height: 100%; border-radius: 3px;
+          background: linear-gradient(90deg, #1565c0, #42a5f5);
+          transition: width 0.6s ease;
+        }
+        .aa-tesla-charging-fill.full-bar {
+          background: linear-gradient(90deg, #2e7d32, #66bb6a);
+        }
+
+        /* ---- Area header ---- */
+        .aa-area-header {
+          padding: 10px 16px 4px;
+          font-size: 12px; font-weight: 700; letter-spacing: 1.2px;
+          text-transform: uppercase;
+          color: var(--secondary-text-color, #999);
+          border-top: 1px solid var(--divider-color, rgba(0,0,0,.08));
+        }
+        .aa-area-header:first-child { border-top: none; }
+
+        /* ---- Appliance row ---- */
+        .aa-appliance {
+          display: flex; align-items: flex-start; gap: 14px;
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.06));
+          border-left: 5px solid transparent; box-sizing: border-box;
           transition: background 0.15s ease;
-          position: relative;
-          border-left: 5px solid transparent;
-          box-sizing: border-box;
         }
-        .aa-appliance:nth-child(even) {
-          border-right: none;
-        }
-        /* Remove bottom border from last two items */
-        .aa-appliance.aa-last-row {
-          border-bottom: none;
-        }
-        .aa-appliance:hover {
-          background: var(--secondary-background-color, rgba(0,0,0,.03));
-        }
+        .aa-appliance:last-child { border-bottom: none; }
         .aa-appliance.aa-status-green  { border-left-color: #43a047; }
         .aa-appliance.aa-status-yellow { border-left-color: #fb8c00; }
         .aa-appliance.aa-status-red    { border-left-color: #e53935; }
 
-        .aa-app-icon {
-          font-size: 32px;
-          line-height: 1;
-          margin-bottom: 6px;
-          display: block;
-        }
-        .aa-app-name {
-          font-size: 20px;
-          font-weight: 600;
-          color: var(--primary-text-color, #333);
-          margin-bottom: 4px;
-          line-height: 1.2;
-        }
-        .aa-app-cost {
-          font-size: 18px;
-          font-weight: 500;
-          line-height: 1.2;
-        }
-        .aa-app-cost.green  { color: #2e7d32; }
-        .aa-app-cost.yellow { color: #e65100; }
-        .aa-app-cost.red    { color: #c62828; }
-
-        .aa-app-watts {
-          font-size: 13px;
-          color: var(--secondary-text-color, #888);
-          margin-top: 2px;
-        }
-        .aa-app-deadline {
-          font-size: 13px;
-          font-weight: 600;
-          margin-top: 4px;
-          color: #e65100;
-        }
-        .aa-app-deadline.urgent { color: #c62828; animation: aa-pulse-text 1s ease-in-out infinite alternate; }
-        .aa-app-deadline.missed { color: #9e9e9e; }
-
-        .aa-app-history {
-          font-size: 12px;
-          color: var(--secondary-text-color, #888);
-          margin-top: 4px;
-          line-height: 1.4;
-        }
-        .aa-app-history-icon {
-          font-size: 11px;
-          opacity: 0.7;
-        }
-
-        /* Pulsing glow for running appliances */
-        @keyframes aa-running-glow {
-          0%   { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.3), 0 0 0 0 rgba(67,160,71,0); }
-          50%  { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.5), 0 0 8px 2px rgba(67,160,71,0.25); }
-          100% { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.3), 0 0 0 0 rgba(67,160,71,0); }
-        }
+        /* Running state — green background tint + glow */
         .aa-appliance.aa-running {
+          background: rgba(67, 160, 71, 0.06);
           animation: aa-running-glow 2s ease-in-out infinite;
         }
+        @keyframes aa-running-glow {
+          0%   { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.2); }
+          50%  { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.4), 0 0 6px 1px rgba(67,160,71,0.15); }
+          100% { box-shadow: inset 0 0 0 1px rgba(67,160,71,0.2); }
+        }
+        /* Idle/off state — slightly dimmed */
+        .aa-appliance.aa-idle {
+          opacity: 0.65;
+        }
+
+        .aa-app-icon { font-size: 26px; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+        .aa-app-body { flex: 1; min-width: 0; }
+
+        .aa-app-header { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+        .aa-app-name {
+          font-size: 15px; font-weight: 600;
+          color: var(--primary-text-color, #333);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .aa-badge {
+          font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+          padding: 2px 7px; border-radius: 5px; flex-shrink: 0;
+          text-transform: uppercase;
+        }
+        .aa-badge.green  { background: #e8f5e9; color: #2e7d32; }
+        .aa-badge.yellow { background: #fff3e0; color: #e65100; }
+        .aa-badge.red    { background: #ffebee; color: #c62828; }
+
+        .aa-app-reason {
+          font-size: 12px; color: var(--secondary-text-color, #888); margin-bottom: 1px;
+        }
+
+        /* Running indicator */
+        .aa-app-live {
+          font-size: 13px; font-weight: 600; color: #2e7d32; margin-bottom: 1px;
+          display: flex; align-items: center; gap: 4px;
+        }
         .aa-running-dot {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          background: #43a047;
-          border-radius: 50%;
-          margin-right: 5px;
-          vertical-align: middle;
+          display: inline-block; width: 8px; height: 8px;
+          background: #43a047; border-radius: 50%;
           animation: aa-pulse-dot 1.5s ease-in-out infinite;
         }
         @keyframes aa-pulse-dot {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50%       { opacity: 0.6; transform: scale(1.4); }
-        }
-        @keyframes aa-pulse-text {
-          from { opacity: 1; }
-          to   { opacity: 0.6; }
+          50%       { opacity: 0.5; transform: scale(1.5); }
         }
 
-        /* ---- Inline deadline picker ---- */
-        .aa-deadline-picker {
-          display: none;
-          background: var(--secondary-background-color, #f5f5f5);
-          border-top: 1px solid var(--divider-color, rgba(0,0,0,.1));
-          padding: 12px 14px;
-          grid-column: 1 / -1;
-        }
-        .aa-deadline-picker.aa-open {
-          display: block;
-        }
-        .aa-picker-title {
-          font-size: 13px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.8px;
-          color: var(--secondary-text-color, #888);
-          margin-bottom: 10px;
-        }
-        .aa-picker-row {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-          flex-wrap: wrap;
-          margin-bottom: 10px;
-        }
-        .aa-picker-select,
-        .aa-picker-time {
-          padding: 8px 10px;
-          border-radius: 8px;
-          border: 1px solid var(--divider-color, #ccc);
-          background: var(--ha-card-background, #fff);
-          color: var(--primary-text-color, #333);
-          font-size: 15px;
-          font-family: inherit;
-        }
-        .aa-picker-select { min-width: 130px; }
-        .aa-picker-time   { width: 110px; }
-        .aa-picker-save {
-          padding: 8px 20px;
-          background: var(--primary-color, #03a9f4);
-          color: #fff;
-          border: none;
-          border-radius: 8px;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: inherit;
-        }
-        .aa-picker-save:hover { opacity: 0.9; }
-        .aa-picker-clear {
-          padding: 8px 14px;
-          background: transparent;
-          color: var(--secondary-text-color, #888);
-          border: 1px solid var(--divider-color, #ccc);
-          border-radius: 8px;
-          font-size: 15px;
-          cursor: pointer;
-          font-family: inherit;
-        }
-        .aa-picker-clear:hover { background: var(--divider-color, #eee); }
+        .aa-app-deadline { font-size: 12px; font-weight: 600; margin-bottom: 1px; }
+        .aa-app-deadline.free    { color: #2e7d32; }
+        .aa-app-deadline.warning { color: #e65100; }
+        .aa-app-deadline.urgent  { color: #c62828; animation: aa-pulse-text 1s ease-in-out infinite alternate; }
+        .aa-app-deadline.missed  { color: #9e9e9e; }
+        @keyframes aa-pulse-text { from { opacity: 1; } to { opacity: 0.6; } }
 
-        /* ---- Navigation ---- */
+        .aa-app-history {
+          font-size: 11px; color: var(--secondary-text-color, #aaa);
+          display: flex; gap: 10px; flex-wrap: wrap; margin-top: 1px;
+        }
+
+        /* ---- Nav ---- */
         .aa-nav {
-          display: flex;
-          gap: 8px;
-          padding: 14px 16px;
-          border-top: 1px solid var(--divider-color, rgba(0,0,0,.08));
-          flex-wrap: wrap;
+          display: flex; gap: 8px; padding: 14px 16px;
+          border-top: 1px solid var(--divider-color, rgba(0,0,0,.08)); flex-wrap: wrap;
         }
         .aa-nav-btn {
-          flex: 1;
-          min-width: 70px;
-          padding: 12px 10px;
+          flex: 1; min-width: 70px; padding: 10px;
           background: var(--secondary-background-color, #f0f0f0);
           color: var(--primary-text-color, #333);
-          border: none;
-          border-radius: 10px;
-          font-size: 16px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: inherit;
-          text-align: center;
-          transition: background 0.15s, transform 0.1s;
+          border: none; border-radius: 10px;
+          font-size: 15px; font-weight: 600; cursor: pointer;
+          font-family: inherit; text-align: center;
         }
-        .aa-nav-btn:hover  { background: var(--divider-color, #e0e0e0); }
-        .aa-nav-btn:active { transform: scale(0.97); }
+        .aa-nav-btn:hover { background: var(--divider-color, #e0e0e0); }
 
-        /* ---- Empty state ---- */
         .aa-empty {
-          padding: 32px 20px;
-          text-align: center;
-          color: var(--secondary-text-color, #888);
-          font-size: 16px;
+          padding: 32px 20px; text-align: center;
+          color: var(--secondary-text-color, #888); font-size: 16px;
         }
       </style>
       <div class="aa-card">
@@ -332,163 +228,176 @@ class ApplianceAdvisorCard extends HTMLElement {
           <div class="aa-banner-status" id="aa-banner-status">—</div>
           <div class="aa-metrics" id="aa-metrics"></div>
         </div>
-        <div class="aa-appliances" id="aa-appliances"></div>
+        <div id="aa-tesla"></div>
+        <div id="aa-appliances"></div>
         <div class="aa-nav" id="aa-nav"></div>
       </div>
     `;
-
-    // Render static navigation buttons once (they don't depend on hass state)
     this._renderNav();
   }
-
-  // ---------------------------------------------------------------------------
-  // Navigation buttons — rendered once from config
-  // ---------------------------------------------------------------------------
 
   _renderNav() {
     const nav = this._config.navigation || [];
     const navEl = this.shadowRoot.getElementById("aa-nav");
     if (!navEl) return;
-    if (nav.length === 0) {
-      navEl.style.display = "none";
-      return;
-    }
-    navEl.innerHTML = nav.map(item => `
-      <button class="aa-nav-btn" data-path="${this._esc(item.path || "")}">
-        ${this._esc(item.label || item.path || "?")}
-      </button>
-    `).join("");
-
+    if (nav.length === 0) { navEl.style.display = "none"; return; }
+    navEl.innerHTML = nav.map(item =>
+      `<button class="aa-nav-btn" data-path="${this._esc(item.path || "")}">${this._esc(item.label || "?")}</button>`
+    ).join("");
     navEl.querySelectorAll(".aa-nav-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const path = btn.dataset.path;
-        if (path && this._hass) {
-          // Use HA navigation service
-          this._hass.callService("browser_mod", "navigate", { path }).catch(() => {
-            // Fallback: direct location change
-            window.location.href = path;
-          });
-        }
-      });
+      btn.addEventListener("click", () => { if (btn.dataset.path) window.location.href = btn.dataset.path; });
     });
   }
 
   // ---------------------------------------------------------------------------
-  // Main update — called on every hass state change
+  // Update
   // ---------------------------------------------------------------------------
 
   _update() {
     if (!this._hass || !this._config) return;
-
-    const summaryEntityId = this._config.entity;
-    const summaryState    = this._hass.states[summaryEntityId];
-
-    if (!summaryState) {
-      console.warn("appliance-advisor-card: entity not found:", summaryEntityId);
-    } else {
-      console.debug("appliance-advisor-card: entity state:", summaryState.state,
-                     "attributes:", JSON.stringify(summaryState.attributes));
-    }
-
-    const appliances      = summaryState?.attributes?.appliances || [];
-
+    const summaryState = this._hass.states[this._config.entity];
+    const appliances   = summaryState?.attributes?.appliances || [];
     this._updateBanner(appliances);
     this._updateMetrics();
+    this._updateTesla();
     this._updateAppliances(appliances);
   }
-
-  // ---------------------------------------------------------------------------
-  // Banner — gradient + status text based on green ratio
-  // ---------------------------------------------------------------------------
 
   _updateBanner(appliances) {
     const bannerEl = this.shadowRoot.getElementById("aa-banner");
     const statusEl = this.shadowRoot.getElementById("aa-banner-status");
     if (!bannerEl || !statusEl) return;
-
     const total = appliances.length;
     if (total === 0) {
       bannerEl.style.background = "linear-gradient(135deg, #607d8b 0%, #455a64 100%)";
-      statusEl.textContent = "Nessun elettrodomestico";
-      return;
+      statusEl.textContent = "Nessun elettrodomestico"; return;
     }
-
-    const greenCount  = appliances.filter(a => a.status === "green").length;
-    const yellowCount = appliances.filter(a => a.status === "yellow").length;
-    const ratio = greenCount / total;
-
-    let gradient, statusText;
-
+    const green = appliances.filter(a => a.status === "green").length;
+    const yellow = appliances.filter(a => a.status === "yellow").length;
+    const ratio = green / total;
     if (ratio >= 0.75) {
-      gradient = "linear-gradient(135deg, #2e7d32 0%, #43a047 50%, #66bb6a 100%)";
-      statusText = greenCount === total ? "Solare al 100%" : `Solare — ${greenCount} di ${total} gratis`;
-    } else if (ratio >= 0.4 || yellowCount > 0) {
-      // Mixed — blend green→yellow proportionally
-      const g = Math.round(ratio * 100);
-      gradient = `linear-gradient(135deg, #f57f17 0%, #fb8c00 40%, #ffa726 100%)`;
-      statusText = greenCount > 0
-        ? `Parziale — ${greenCount} gratis, ${yellowCount} misto`
-        : `Costo elevato — solare insufficiente`;
+      bannerEl.style.background = "linear-gradient(135deg, #2e7d32 0%, #43a047 50%, #66bb6a 100%)";
+      statusEl.textContent = green === total ? "Solare al 100%" : `Solare — ${green} di ${total} gratis`;
+    } else if (ratio >= 0.4 || yellow > 0) {
+      bannerEl.style.background = "linear-gradient(135deg, #f57f17 0%, #fb8c00 40%, #ffa726 100%)";
+      statusEl.textContent = green > 0 ? `Parziale — ${green} gratis, ${yellow} misto` : "Costo elevato — solare insufficiente";
     } else {
-      gradient = "linear-gradient(135deg, #b71c1c 0%, #e53935 50%, #ef5350 100%)";
-      statusText = "Prevalentemente da rete";
+      bannerEl.style.background = "linear-gradient(135deg, #b71c1c 0%, #e53935 50%, #ef5350 100%)";
+      statusEl.textContent = "Prevalentemente da rete";
     }
-
-    bannerEl.style.background = gradient;
-    statusEl.textContent = statusText;
   }
 
-  // ---------------------------------------------------------------------------
-  // Metrics row — Solar, Battery, Tesla
-  // ---------------------------------------------------------------------------
-
   _updateMetrics() {
-    const metricsEl = this.shadowRoot.getElementById("aa-metrics");
-    if (!metricsEl) return;
-
-    const solarVal   = this._solarDisplay();
-    const batteryVal = this._numVal(this._config.battery_soc_entity);
-    const teslaVal   = this._numVal(this._config.tesla_soc_entity);
-
-    metricsEl.innerHTML = `
-      <div class="aa-metric">
-        <div class="aa-metric-label">Solare</div>
-        <div class="aa-metric-value">${solarVal}</div>
-      </div>
-      <div class="aa-metric">
-        <div class="aa-metric-label">Batteria</div>
-        <div class="aa-metric-value">${batteryVal !== null ? batteryVal + "%" : "—"}</div>
-      </div>
-      <div class="aa-metric">
-        <div class="aa-metric-label">Tesla</div>
-        <div class="aa-metric-value">${teslaVal !== null ? teslaVal + "%" : "—"}</div>
-      </div>
+    const el = this.shadowRoot.getElementById("aa-metrics");
+    if (!el) return;
+    const solar = this._solarDisplay();
+    const batt  = this._numVal(this._config.battery_soc_entity);
+    const tesla = this._numVal(this._config.tesla_soc_entity);
+    el.innerHTML = `
+      <div class="aa-metric"><div class="aa-metric-label">Solare</div><div class="aa-metric-value">${solar}</div></div>
+      <div class="aa-metric"><div class="aa-metric-label">Batteria</div><div class="aa-metric-value">${batt !== null ? batt + "%" : "—"}</div></div>
+      <div class="aa-metric"><div class="aa-metric-label">Tesla</div><div class="aa-metric-value">${tesla !== null ? tesla + "%" : "—"}</div></div>
     `;
   }
 
   _solarDisplay() {
-    const entityId = this._config.solar_entity;
-    if (!entityId) return "—";
-    const state = this._hass.states[entityId];
-    if (!state || state.state === "unavailable" || state.state === "unknown") return "—";
-    const raw = parseFloat(state.state);
-    if (isNaN(raw)) return "—";
-    if (raw >= 1000) {
-      return (raw / 1000).toFixed(1) + " kW";
-    }
-    return Math.round(raw) + " W";
+    const s = this._stateVal(this._config.solar_entity);
+    if (s === null) return "—";
+    return s >= 1000 ? (s / 1000).toFixed(1) + " kW" : Math.round(s) + " W";
   }
 
   _numVal(entityId) {
+    const v = this._stateVal(entityId);
+    return v !== null ? Math.round(v) : null;
+  }
+
+  _stateVal(entityId) {
     if (!entityId) return null;
     const state = this._hass.states[entityId];
     if (!state || state.state === "unavailable" || state.state === "unknown") return null;
     const v = parseFloat(state.state);
-    return isNaN(v) ? null : Math.round(v);
+    return isNaN(v) ? null : v;
+  }
+
+  _stateStr(entityId) {
+    if (!entityId) return null;
+    const state = this._hass.states[entityId];
+    if (!state || state.state === "unavailable" || state.state === "unknown") return null;
+    return state.state;
   }
 
   // ---------------------------------------------------------------------------
-  // Appliance grid
+  // Tesla section
+  // ---------------------------------------------------------------------------
+
+  _updateTesla() {
+    const el = this.shadowRoot.getElementById("aa-tesla");
+    if (!el) return;
+
+    const soc = this._numVal(this._config.tesla_soc_entity);
+    const stateStr = this._stateStr(this._config.tesla_state_entity);
+    const amps = this._numVal(this._config.tesla_amps_entity);
+    const limitVal = this._numVal(this._config.tesla_charge_limit_entity);
+    const limit = limitVal || 80;
+    const battKwh = this._config.tesla_battery_kwh || 75;
+
+    // Don't show Tesla section if no state entity configured
+    if (!this._config.tesla_state_entity && !this._config.tesla_soc_entity) {
+      el.innerHTML = ""; return;
+    }
+
+    const isCharging = stateStr && (stateStr.toLowerCase().includes("charg") || stateStr.toLowerCase().includes("solar") || (amps && amps > 0));
+    const isFull = soc !== null && soc >= limit;
+
+    let badgeText, badgeClass, detailText;
+    if (isCharging) {
+      badgeText = "In carica"; badgeClass = "charging";
+      const watts = (amps || 0) * 230;
+      const wattsStr = watts >= 1000 ? (watts / 1000).toFixed(1) + " kW" : watts + " W";
+      detailText = `${amps || 0}A — ${wattsStr}`;
+      // ETA
+      if (soc !== null && soc < limit && amps > 0) {
+        const kwhRemaining = battKwh * (limit - soc) / 100;
+        const chargePowerKw = amps * 230 / 1000;
+        const hoursLeft = kwhRemaining / chargePowerKw;
+        if (hoursLeft < 1) {
+          detailText += ` — ~${Math.round(hoursLeft * 60)} min rimasti`;
+        } else {
+          const h = Math.floor(hoursLeft);
+          const m = Math.round((hoursLeft - h) * 60);
+          detailText += ` — ~${h}h${m > 0 ? m + "m" : ""} rimasti`;
+        }
+      }
+    } else if (isFull) {
+      badgeText = "Completa"; badgeClass = "full";
+      detailText = `${soc}% — limite ${limit}%`;
+    } else {
+      badgeText = "In attesa"; badgeClass = "idle";
+      detailText = soc !== null ? `${soc}% — limite ${limit}%` : "—";
+    }
+
+    const barPct = soc !== null ? Math.min(100, Math.max(0, (soc / limit) * 100)) : 0;
+    const barClass = isFull ? " full-bar" : "";
+
+    el.innerHTML = `
+      <div class="aa-tesla">
+        <span class="aa-tesla-icon">\u{1F697}</span>
+        <div class="aa-tesla-body">
+          <div class="aa-tesla-header">
+            <span class="aa-tesla-name">Tesla</span>
+            <span class="aa-tesla-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="aa-tesla-detail">${this._esc(detailText)}</div>
+          <div class="aa-tesla-charging-bar">
+            <div class="aa-tesla-charging-fill${barClass}" style="width:${barPct}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Appliance list — grouped by area
   // ---------------------------------------------------------------------------
 
   _updateAppliances(appliances) {
@@ -496,285 +405,150 @@ class ApplianceAdvisorCard extends HTMLElement {
     if (!container) return;
 
     if (appliances.length === 0) {
-      container.innerHTML = `
-        <div class="aa-empty" style="grid-column:1/-1">
-          Nessun elettrodomestico configurato.<br>
-          <small>Aggiungi elettrodomestici nelle impostazioni dell'integrazione.</small>
-        </div>`;
+      container.innerHTML = `<div class="aa-empty">Nessun elettrodomestico configurato.</div>`;
       return;
     }
 
-    // Preserve open picker state across updates
-    const openKey = this._openPickerKey || null;
+    // Group by area: parse "Su" / "Giù" from name
+    const groups = {};
+    for (const app of appliances) {
+      const area = this._detectArea(app.name || app.key || "");
+      if (!groups[area]) groups[area] = [];
+      groups[area].push(app);
+    }
 
-    // Build new HTML
-    const rows = appliances.map((app, idx) => {
-      const isLastRow = idx >= appliances.length - (appliances.length % 2 === 0 ? 2 : 1);
-      const lastRowClass = isLastRow ? " aa-last-row" : "";
-      const runningClass = app.running ? " aa-running" : "";
-      const statusClass  = `aa-status-${app.status || "red"}`;
-      const costClass    = app.status || "red";
-      const icon         = this._esc(app.icon || this._fallbackIcon(app.key || ""));
-      const name         = this._esc(app.name || app.key || "?");
+    // Render order: Piano di Sopra first, then Piano di Sotto, then Others
+    const order = ["Piano di Sopra", "Piano di Sotto", "Altro"];
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const ia = order.indexOf(a); const ib = order.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
 
-      // Cost / deadline label
-      let costHtml = "";
-      if (app.deadline_message) {
-        let deadlineClass = "";
-        if (app.deadline_message === "Avvia adesso!") deadlineClass = " urgent";
-        else if (app.deadline_message === "Troppo tardi") deadlineClass = " missed";
-        costHtml = `<div class="aa-app-deadline${deadlineClass}">${this._esc(app.deadline_message)}</div>`;
-      } else {
-        costHtml = `<div class="aa-app-cost ${costClass}">${this._esc(app.cost_label || "—")}</div>`;
+    let html = "";
+    for (const area of sortedKeys) {
+      html += `<div class="aa-area-header">${this._esc(area)}</div>`;
+      for (const app of groups[area]) {
+        html += this._renderAppliance(app);
       }
+    }
+    container.innerHTML = html;
+  }
 
-      // Running wattage
-      const wattsHtml = app.running && app.current_watts != null
-        ? `<div class="aa-app-watts"><span class="aa-running-dot"></span>${Math.round(app.current_watts)} W</div>`
-        : "";
+  _detectArea(name) {
+    const lower = name.toLowerCase();
+    if (lower.includes(" su") || lower.includes("_su")) return "Piano di Sopra";
+    if (lower.includes(" gi") || lower.includes("_gi") || lower.includes(" giu") || lower.includes("_giu")) return "Piano di Sotto";
+    return "Altro";
+  }
 
-      // Run history
-      let historyHtml = "";
-      const parts = [];
-      if (app.last_run_end) {
-        parts.push(`<span class="aa-app-history-icon">🕐</span> ${this._formatTimeAgo(app.last_run_end)}`);
-      }
-      if (app.avg_consumption_kwh != null) {
-        parts.push(`<span class="aa-app-history-icon">⚡</span> ${app.avg_consumption_kwh} kWh media`);
-      }
-      if (parts.length > 0) {
-        historyHtml = `<div class="aa-app-history">${parts.join(" · ")}</div>`;
-      }
+  _renderAppliance(app) {
+    const statusClass  = `aa-status-${app.status || "red"}`;
+    const isRunning    = app.running === true;
+    const isIdle       = app.running === false && (app.current_watts == null || app.current_watts === 0);
+    const stateClass   = isRunning ? " aa-running" : (isIdle ? " aa-idle" : "");
+    const badgeClass   = app.status || "red";
+    const icon         = this._esc(app.icon || this._fallbackIcon(app.key || ""));
+    // Strip area suffix from display name for cleaner look
+    const name         = this._esc(this._stripArea(app.name || app.key || "?"));
 
-      return `
-        <div class="aa-appliance ${statusClass}${runningClass}${lastRowClass}"
-             data-key="${this._esc(app.key || "")}"
-             tabindex="0"
-             role="button"
-             aria-label="${name}">
-          <span class="aa-app-icon">${icon}</span>
-          <div class="aa-app-name">${name}</div>
-          ${costHtml}
-          ${wattsHtml}
+    // Running indicator
+    let liveHtml = "";
+    if (isRunning && app.current_watts != null) {
+      liveHtml = `<div class="aa-app-live"><span class="aa-running-dot"></span> In funzione — ${Math.round(app.current_watts)} W</div>`;
+    }
+
+    // Deadline / suggestion
+    let deadlineHtml = "";
+    if (app.deadline_message) {
+      let cls = "warning";
+      if (app.deadline_message === "Avvia adesso!") cls = "urgent";
+      else if (app.deadline_message === "Troppo tardi") cls = "missed";
+      deadlineHtml = `<div class="aa-app-deadline ${cls}">${this._esc(app.deadline_message)}</div>`;
+    } else if (app.status === "green") {
+      deadlineHtml = `<div class="aa-app-deadline free">Avvia ora — gratis con il solare</div>`;
+    } else if (app.latest_start_time) {
+      deadlineHtml = `<div class="aa-app-deadline warning">Avvia entro ${this._esc(app.latest_start_time)}</div>`;
+    }
+
+    // History
+    const histParts = [];
+    if (app.last_run_end) {
+      const ago = this._formatTimeAgo(app.last_run_end);
+      const kwh = app.last_run_kwh != null ? ` (${app.last_run_kwh} kWh)` : "";
+      const dur = app.last_run_duration_min != null ? `, ${Math.round(app.last_run_duration_min)} min` : "";
+      histParts.push(`Ultimo: ${ago}${dur}${kwh}`);
+    }
+    if (app.avg_consumption_kwh != null) {
+      histParts.push(`Media: ${app.avg_consumption_kwh} kWh/ciclo`);
+    }
+    const historyHtml = histParts.length > 0
+      ? `<div class="aa-app-history">${histParts.map(p => `<span>${this._esc(p)}</span>`).join("")}</div>`
+      : "";
+
+    return `
+      <div class="aa-appliance ${statusClass}${stateClass}">
+        <span class="aa-app-icon">${icon}</span>
+        <div class="aa-app-body">
+          <div class="aa-app-header">
+            <span class="aa-app-name">${name}</span>
+            <span class="aa-badge ${badgeClass}">${this._esc(app.cost_label || "—")}</span>
+          </div>
+          <div class="aa-app-reason">${this._esc(app.reason || "")}</div>
+          ${liveHtml}
+          ${deadlineHtml}
           ${historyHtml}
-        </div>`;
-    }).join("");
-
-    container.innerHTML = rows;
-
-    // Re-attach click handlers
-    container.querySelectorAll(".aa-appliance").forEach(el => {
-      el.addEventListener("click", (e) => this._onApplianceTap(e, el));
-      el.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          this._onApplianceTap(e, el);
-        }
-      });
-    });
-
-    // Re-open picker if it was open before (key may have changed on rerender)
-    if (openKey) {
-      const target = container.querySelector(`[data-key="${CSS.escape(openKey)}"]`);
-      if (target) {
-        this._insertPickerAfter(target, openKey, appliances);
-      }
-    }
+        </div>
+      </div>`;
   }
 
-  // ---------------------------------------------------------------------------
-  // Appliance tap — open/close inline deadline picker
-  // ---------------------------------------------------------------------------
-
-  _onApplianceTap(e, el) {
-    const key = el.dataset.key;
-    if (!key) return;
-
-    // If picker is already open for this key, close it
-    if (this._openPickerKey === key) {
-      this._closePicker();
-      return;
-    }
-
-    this._closePicker();
-
-    const summaryState = this._hass.states[this._config.entity];
-    const appliances   = summaryState?.attributes?.appliances || [];
-    this._openPickerKey = key;
-    this._insertPickerAfter(el, key, appliances);
-  }
-
-  _insertPickerAfter(el, key, appliances) {
-    // Find current deadline for this appliance from summary sensor
-    // (the deadline_message and latest_start_time are in the sensor attrs)
-    const app = appliances.find(a => a.key === key) || {};
-
-    // Determine current picker values from existing deadline data stored in attributes
-    // We parse latest_start_time to pre-fill the time input if a deadline exists
-    const currentTime        = app.latest_start_time || "";
-    const hasDeadline        = !!app.deadline_message || !!app.latest_start_time;
-    const currentType        = hasDeadline ? "finish_by" : "none";
-
-    // Build picker element using class selectors (avoids ID-uniqueness requirements)
-    const picker = document.createElement("div");
-    picker.className = "aa-deadline-picker aa-open";
-    picker.dataset.pickerKey = key;
-    picker.innerHTML = `
-      <div class="aa-picker-title">Scadenza — ${this._esc(app.name || key)}</div>
-      <div class="aa-picker-row">
-        <select class="aa-picker-select aa-picker-type">
-          <option value="none"${currentType === "none" ? " selected" : ""}>Nessuna scadenza</option>
-          <option value="finish_by"${currentType === "finish_by" ? " selected" : ""}>Finisci entro</option>
-          <option value="start_by"${currentType === "start_by" ? " selected" : ""}>Inizia entro</option>
-        </select>
-        <input type="time" class="aa-picker-time aa-picker-timeval"
-               value="${this._esc(currentTime)}" step="300" />
-      </div>
-      <div class="aa-picker-row">
-        <button class="aa-picker-save aa-picker-btn-save">Salva</button>
-        <button class="aa-picker-clear aa-picker-btn-cancel">Annulla</button>
-      </div>
-    `;
-
-    // Insert after the appliance tile's row-pair in the 2-column grid
-    const container = this.shadowRoot.getElementById("aa-appliances");
-    const allTiles  = Array.from(container.querySelectorAll(".aa-appliance"));
-    const tileIdx   = allTiles.indexOf(el);
-
-    // Pair partner: even index → next tile; odd → same tile (already right column)
-    const pairIdx   = tileIdx % 2 === 0 ? tileIdx + 1 : tileIdx;
-    const pairTile  = allTiles[pairIdx] || el;
-
-    container.insertBefore(picker, pairTile.nextSibling || null);
-
-    // Wire up buttons via class selectors scoped to picker
-    const typeSelect = picker.querySelector(".aa-picker-type");
-    const timeInput  = picker.querySelector(".aa-picker-timeval");
-
-    picker.querySelector(".aa-picker-btn-save").addEventListener("click", () => {
-      const dtype = typeSelect ? typeSelect.value : "none";
-      const dtime = (timeInput && timeInput.value) ? timeInput.value : null;
-      this._saveDeadline(key, dtype, dtime);
-    });
-
-    picker.querySelector(".aa-picker-btn-cancel").addEventListener("click", () => {
-      this._closePicker();
-    });
-
-    // Show/hide time input based on type selection
-    const _toggleTime = () => {
-      if (timeInput) {
-        timeInput.style.display = typeSelect && typeSelect.value === "none" ? "none" : "";
-      }
-    };
-    _toggleTime();
-    if (typeSelect) typeSelect.addEventListener("change", _toggleTime);
-  }
-
-  _closePicker() {
-    const container = this.shadowRoot.getElementById("aa-appliances");
-    if (!container) return;
-    container.querySelectorAll(".aa-deadline-picker").forEach(p => p.remove());
-    this._openPickerKey = null;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Service call — set_appliance_deadline
-  // ---------------------------------------------------------------------------
-
-  _saveDeadline(applianceKey, deadlineType, deadlineTime) {
-    if (!this._hass) return;
-    const data = {
-      appliance: applianceKey,
-      type:      deadlineType,
-    };
-    if (deadlineTime && deadlineType !== "none") {
-      data.time = deadlineTime;
-    }
-    this._hass.callService("tesla_solar_charging", "set_appliance_deadline", data)
-      .then(() => {
-        this._closePicker();
-      })
-      .catch(err => {
-        console.error("appliance-advisor-card: failed to set deadline", err);
-        // Keep picker open on error so user can retry
-      });
+  _stripArea(name) {
+    return name.replace(/\s+(Su|Gi[uù])$/i, "").trim();
   }
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
-  /** HTML-escape a string to prevent XSS when injected via innerHTML */
   _esc(s) {
     if (s == null) return "";
-    return String(s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  /**
-   * Format an ISO datetime string as a relative "time ago" label in Italian.
-   */
   _formatTimeAgo(isoStr) {
     if (!isoStr) return "";
     try {
-      const date = new Date(isoStr);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMin = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMin < 1) return "adesso";
-      if (diffMin < 60) return `${diffMin} min fa`;
-      if (diffHours < 24) return `${diffHours}h fa`;
-      if (diffDays === 1) return "ieri";
-      if (diffDays < 7) return `${diffDays}g fa`;
-      // Show date for older runs
-      return date.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
-    } catch {
-      return "";
-    }
+      const d = new Date(isoStr), now = new Date(), ms = now - d;
+      const min = Math.floor(ms / 60000), hrs = Math.floor(ms / 3600000), days = Math.floor(ms / 86400000);
+      if (min < 1) return "adesso";
+      if (min < 60) return `${min} min fa`;
+      if (hrs < 24) return `${hrs}h fa`;
+      if (days === 1) return "ieri";
+      if (days < 7) return `${days}g fa`;
+      return d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+    } catch { return ""; }
   }
 
-  /**
-   * Fallback icon lookup by appliance key.
-   * Uses actual emoji characters (not Python unicode escapes).
-   * The sensor stores the real emoji, so this is only used if icon is missing.
-   */
   _fallbackIcon(key) {
-    const lower = (key || "").toLowerCase();
-    if (lower.includes("lava") && lower.includes("toviglie")) return "🍽️";
-    if (lower.includes("lavatrice"))  return "👕";
-    if (lower.includes("forno"))      return "🔥";
-    if (lower.includes("asciuga"))    return "💨";
-    if (lower.includes("condi") || lower.includes("_ac")) return "❄️";
-    return "🔌";
+    const k = (key || "").toLowerCase();
+    if (k.includes("lavastoviglie")) return "\u{1F37D}\uFE0F";
+    if (k.includes("lavatrice")) return "\u{1F455}";
+    if (k.includes("forno")) return "\u{1F525}";
+    if (k.includes("asciuga")) return "\u{1F4A8}";
+    if (k.includes("condi") || k.includes("_ac")) return "\u2744\uFE0F";
+    return "\u{1F50C}";
   }
 }
-
-// ---------------------------------------------------------------------------
-// Register custom element (guarded for HA integration reload safety)
-// ---------------------------------------------------------------------------
 
 if (!customElements.get("appliance-advisor-card")) {
   customElements.define("appliance-advisor-card", ApplianceAdvisorCard);
 }
-
-// ---------------------------------------------------------------------------
-// Register in window.customCards for the HA card picker UI
-// ---------------------------------------------------------------------------
-
 window.customCards = window.customCards || [];
 if (!window.customCards.some(c => c.type === "appliance-advisor-card")) {
   window.customCards.push({
-    type:        "appliance-advisor-card",
-    name:        "Appliance Advisor",
-    description: "Traffic-light appliance recommendations based on solar surplus. Part of Tesla Solar Charging.",
-    preview:     false,
+    type: "appliance-advisor-card",
+    name: "Appliance Advisor",
+    description: "Solar-aware appliance recommendations grouped by area.",
+    preview: false,
   });
 }
