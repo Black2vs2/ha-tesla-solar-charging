@@ -110,7 +110,7 @@ async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) ->
         StaticPathConfig(
             f"/{DOMAIN}/appliance-advisor-card.js",
             str(Path(__file__).parent / "frontend" / "appliance-advisor-card.js"),
-            cache_headers=True,
+            cache_headers=False,
         ),
     ])
 
