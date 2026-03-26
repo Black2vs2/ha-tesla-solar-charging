@@ -10,6 +10,30 @@ APPLIANCE_PRESETS = {
     "custom":          {"name": "Altro",          "icon": "\U0001f50c",       "watts": 1500, "duration": 60},
 }
 
+# Map Italian keywords in entity IDs to preset keys (used by auto-detect)
+ENTITY_KEYWORD_TO_PRESET = {
+    "lavastoviglie": "dishwasher",
+    "lavatrice": "washing_machine",
+    "asciugatrice": "dryer",
+    "forno": "oven",
+    "condizionatore": "ac",
+    "climatizzatore": "ac",
+}
+
+# Location keywords found in entity IDs → name suffix
+LOCATION_KEYWORDS = {
+    "_su_": " Su",
+    "_giu_": " Giù",
+    "_piano_su": " Su",
+    "_piano_giu": " Giù",
+    "_cucina_": " Cucina",
+    "_bagno_": " Bagno",
+    "_camera_": " Camera",
+}
+
+APPLIANCE_STORE_KEY = "tesla_solar_charging.advisor_appliances"
+APPLIANCE_STORE_VERSION = 1
+
 GREEN_THRESHOLD = 1.1
 YELLOW_THRESHOLD = 0.5
 BATTERY_NEAR_FULL_SOC = 95.0

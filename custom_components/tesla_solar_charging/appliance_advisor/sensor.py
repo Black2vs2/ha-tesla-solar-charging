@@ -97,7 +97,10 @@ async def async_setup_advisor_sensors(
     hass: HomeAssistant, entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback, coordinator,
 ) -> None:
-    appliances_cfg = entry.options.get("appliances", {})
+    # Merge appliances from config entry options + service-managed store
+    appliances_cfg = dict(entry.options.get("appliances", {}))
+    if coordinator.appliance_store:
+        appliances_cfg.update(coordinator.appliance_store.get_all())
     entities: list[SensorEntity] = [AdvisorSummarySensor(coordinator, entry)]
     for key, cfg in appliances_cfg.items():
         entities.append(AdvisorApplianceSensor(coordinator, entry, key, cfg.get("name", key)))

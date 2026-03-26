@@ -10,7 +10,7 @@ set_appliance_deadline:
         text:
     type:
       name: Deadline Type
-      description: "finish_by", "start_by", or "none"
+      description: "finish_by, start_by, or none"
       required: true
       selector:
         select:
@@ -24,3 +24,69 @@ set_appliance_deadline:
       required: false
       selector:
         time:
+
+configure_appliances:
+  name: Configure Appliances
+  description: >
+    Replace all advisor appliances from a list of power sensor entity IDs.
+    Auto-detects appliance type and name from the entity ID.
+    No restart needed — changes are picked up on next update cycle.
+  fields:
+    entities:
+      name: Power Entities
+      description: List of power sensor entity IDs (e.g., sensor.presa_su_lavastoviglie_power)
+      required: true
+      selector:
+        entity:
+          domain: sensor
+          multiple: true
+
+add_appliance:
+  name: Add Appliance
+  description: >
+    Add a single appliance by its power sensor entity.
+    Auto-detects type, name, watts, and duration from the entity ID.
+    Override any field by providing it explicitly.
+  fields:
+    power_entity:
+      name: Power Entity
+      description: The power sensor entity ID
+      required: true
+      selector:
+        entity:
+          domain: sensor
+    name:
+      name: Name
+      description: Custom name (auto-detected if omitted)
+      required: false
+      selector:
+        text:
+    watts:
+      name: Watts
+      description: Power consumption in watts (auto-detected if omitted)
+      required: false
+      selector:
+        number:
+          min: 100
+          max: 10000
+          unit_of_measurement: W
+    duration:
+      name: Duration
+      description: Typical run duration in minutes (auto-detected if omitted)
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 600
+          unit_of_measurement: min
+
+remove_appliance:
+  name: Remove Appliance
+  description: Remove an appliance by its key.
+  fields:
+    key:
+      name: Appliance Key
+      description: The appliance key to remove
+      required: true
+      selector:
+        text:

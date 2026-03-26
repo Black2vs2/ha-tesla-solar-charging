@@ -30,6 +30,7 @@ class AdvisorCoordinator(DataUpdateCoordinator):
         entry_data: dict,
         deadline_store,
         run_history_store=None,
+        appliance_store=None,
     ) -> None:
         super().__init__(
             hass,
@@ -41,6 +42,7 @@ class AdvisorCoordinator(DataUpdateCoordinator):
         self._entry_data = entry_data
         self._deadline_store = deadline_store
         self._run_history_store = run_history_store
+        self._appliance_store = appliance_store
         self._advisor_recommendations: dict | None = None
         # Previous running states for transition detection
         self._prev_running: dict[str, bool] = {}
@@ -52,6 +54,10 @@ class AdvisorCoordinator(DataUpdateCoordinator):
     @property
     def run_history_store(self):
         return self._run_history_store
+
+    @property
+    def appliance_store(self):
+        return self._appliance_store
 
     def _get_float(self, entity_id: str) -> float | None:
         """Read a float sensor value, returning None if unavailable."""
@@ -78,14 +84,23 @@ class AdvisorCoordinator(DataUpdateCoordinator):
 
         deadline_data = self._deadline_store.get_all() if self._deadline_store else {}
 
+        # Merge appliances: config entry + service-managed store
+        merged_data = dict(self._entry_data)
+        if self._appliance_store:
+            store_appliances = self._appliance_store.get_all()
+            if store_appliances:
+                entry_appliances = dict(merged_data.get("appliances", {}))
+                entry_appliances.update(store_appliances)
+                merged_data["appliances"] = entry_appliances
+
         # Track running state transitions for run history
         if self._run_history_store:
-            await self._track_run_history()
+            await self._track_run_history(merged_data)
 
         try:
             self._advisor_recommendations = evaluate_all(
                 self.hass,
-                self._entry_data,
+                merged_data,
                 grid_power, grid_voltage,
                 batt_soc, batt_power,
                 current_amps=0.0,
@@ -97,9 +112,9 @@ class AdvisorCoordinator(DataUpdateCoordinator):
 
         return {}
 
-    async def _track_run_history(self) -> None:
+    async def _track_run_history(self, merged_data: dict) -> None:
         """Detect running→stopped transitions and record runs."""
-        appliances = build_appliance_list(self._entry_data)
+        appliances = build_appliance_list(merged_data)
         running_states = get_running_states(self.hass, appliances)
 
         for app in appliances:

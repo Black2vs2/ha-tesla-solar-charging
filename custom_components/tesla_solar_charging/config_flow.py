@@ -146,53 +146,78 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_advisor_appliances(self, user_input=None):
-        """Advisor: select appliances from presets (multi-select)."""
-        from .appliance_advisor.const import APPLIANCE_PRESETS
+        """Advisor: manage appliances."""
+        appliances = dict(self._data.get(CONF_APPLIANCES, {}))
 
         if user_input is not None:
-            selected = user_input.get("presets", [])
-            appliances = {}
-            for preset_key in selected:
-                preset = APPLIANCE_PRESETS.get(preset_key)
-                if not preset:
-                    continue
-                key = preset_key
-                appliances[key] = {
-                    "name": preset["name"],
-                    "icon": preset["icon"],
-                    "watts": preset["watts"],
-                    "duration": preset["duration"],
-                    "power_entity": None,
-                }
-            self._data[CONF_APPLIANCES] = appliances
-            return self.async_create_entry(
-                title="Appliance Advisor",
-                data=self._data,
-            )
+            action = user_input.get("action", "done")
+            if action == "done":
+                self._data[CONF_APPLIANCES] = appliances
+                return self.async_create_entry(
+                    title="Appliance Advisor",
+                    data=self._data,
+                )
+            if action == "add":
+                return await self.async_step_advisor_add()
+            if action.startswith("remove_"):
+                appliances.pop(action[7:], None)
+                self._data[CONF_APPLIANCES] = appliances
+                return await self.async_step_advisor_appliances()
 
-        # Build multi-select options from all presets (excluding "custom")
-        preset_options = [
-            {"value": k, "label": f"{v['icon']} {v['name']} ({v['watts']}W)"}
-            for k, v in APPLIANCE_PRESETS.items()
-            if k != "custom"
-        ]
-        # Pre-select all presets by default
-        default_selected = [k for k in APPLIANCE_PRESETS if k != "custom"]
+        options_list = [{"value": "done", "label": "Salva e chiudi"}]
+        options_list.append({"value": "add", "label": "+ Aggiungi elettrodomestico"})
+        for key, cfg in appliances.items():
+            options_list.append({"value": f"remove_{key}", "label": f"Rimuovi: {cfg.get('name', key)}"})
 
         return self.async_show_form(
             step_id="advisor_appliances",
             data_schema=vol.Schema({
-                vol.Required("presets", default=default_selected): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=preset_options,
-                        multiple=True,
-                        mode="list",
-                    )
+                vol.Required("action", default="done"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=options_list, mode="list")
                 ),
             }),
-            description_placeholders={
-                "hint": "Seleziona gli elettrodomestici. Potrai personalizzarli nelle opzioni."
-            },
+        )
+
+    async def async_step_advisor_add(self, user_input=None):
+        """Advisor: add a new appliance."""
+        from .appliance_advisor.const import APPLIANCE_PRESETS
+
+        if user_input is not None:
+            preset_key = user_input.get("preset", "custom")
+            preset = APPLIANCE_PRESETS.get(preset_key, APPLIANCE_PRESETS["custom"])
+            name = user_input.get("name", preset["name"])
+            key = name.lower().replace(" ", "_").replace("'", "").replace("`", "")
+            appliances = dict(self._data.get(CONF_APPLIANCES, {}))
+            base_key = key
+            counter = 2
+            while key in appliances:
+                key = f"{base_key}_{counter}"
+                counter += 1
+            appliances[key] = {
+                "name": name,
+                "icon": preset["icon"],
+                "watts": user_input.get("watts", preset["watts"]),
+                "duration": user_input.get("duration", preset["duration"]),
+                "power_entity": user_input.get("power_entity") or None,
+            }
+            self._data[CONF_APPLIANCES] = appliances
+            return await self.async_step_advisor_appliances()
+
+        preset_options = [
+            {"value": k, "label": v["name"]}
+            for k, v in APPLIANCE_PRESETS.items()
+        ]
+        return self.async_show_form(
+            step_id="advisor_add",
+            data_schema=vol.Schema({
+                vol.Required("preset", default="custom"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=preset_options)
+                ),
+                vol.Required("name", default=""): str,
+                vol.Optional("watts", default=1500): vol.Coerce(int),
+                vol.Optional("duration", default=60): vol.Coerce(int),
+                vol.Optional("power_entity", default=""): SENSOR_SELECTOR,
+            }),
         )
 
     # --- Solar Charging config flow ---

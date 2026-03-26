@@ -78,9 +78,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Appliance Advisor entry."""
+    import voluptuous as vol
+
+    from .appliance_advisor.appliance_store import ApplianceConfigStore
     from .appliance_advisor.coordinator import AdvisorCoordinator
-    from .appliance_advisor.store import DeadlineStore
     from .appliance_advisor.run_history_store import RunHistoryStore
+    from .appliance_advisor.store import DeadlineStore
 
     data = {**entry.data, **entry.options}
 
@@ -90,7 +93,12 @@ async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) ->
     run_history_store = RunHistoryStore(hass)
     await run_history_store.async_load()
 
-    coordinator = AdvisorCoordinator(hass, entry.entry_id, data, deadline_store, run_history_store)
+    appliance_store = ApplianceConfigStore(hass)
+    await appliance_store.async_load()
+
+    coordinator = AdvisorCoordinator(
+        hass, entry.entry_id, data, deadline_store, run_history_store, appliance_store,
+    )
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await coordinator.async_config_entry_first_refresh()
@@ -106,15 +114,64 @@ async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) ->
         ),
     ])
 
-    # Register service
+    # --- Services ---
+
     async def handle_set_deadline(call):
         appliance = call.data["appliance"]
         dtype = call.data.get("type", "none")
         dtime = call.data.get("time")
         await deadline_store.async_set(appliance, dtype, dtime)
 
+    async def handle_configure_appliances(call):
+        """Replace all appliances from a list of power entity IDs."""
+        entities = call.data["entities"]
+        result = await appliance_store.async_configure_from_entities(entities)
+        _LOGGER.info("Advisor: configured %d appliances from entities", len(result))
+        await coordinator.async_request_refresh()
+
+    async def handle_add_appliance(call):
+        """Add a single appliance by power entity (auto-detects name/watts)."""
+        entity_id = call.data["power_entity"]
+        name = call.data.get("name")
+        watts = call.data.get("watts")
+        duration = call.data.get("duration")
+        key = await appliance_store.async_add(entity_id, name=name, watts=watts, duration=duration)
+        _LOGGER.info("Advisor: added appliance '%s' from %s", key, entity_id)
+        await coordinator.async_request_refresh()
+
+    async def handle_remove_appliance(call):
+        """Remove an appliance by key."""
+        key = call.data["key"]
+        removed = await appliance_store.async_remove(key)
+        if removed:
+            _LOGGER.info("Advisor: removed appliance '%s'", key)
+        await coordinator.async_request_refresh()
+
     if not hass.services.has_service(DOMAIN, "set_appliance_deadline"):
         hass.services.async_register(DOMAIN, "set_appliance_deadline", handle_set_deadline)
+
+    if not hass.services.has_service(DOMAIN, "configure_appliances"):
+        hass.services.async_register(
+            DOMAIN, "configure_appliances", handle_configure_appliances,
+            schema=vol.Schema({vol.Required("entities"): [str]}),
+        )
+
+    if not hass.services.has_service(DOMAIN, "add_appliance"):
+        hass.services.async_register(
+            DOMAIN, "add_appliance", handle_add_appliance,
+            schema=vol.Schema({
+                vol.Required("power_entity"): str,
+                vol.Optional("name"): str,
+                vol.Optional("watts"): vol.Coerce(int),
+                vol.Optional("duration"): vol.Coerce(int),
+            }),
+        )
+
+    if not hass.services.has_service(DOMAIN, "remove_appliance"):
+        hass.services.async_register(
+            DOMAIN, "remove_appliance", handle_remove_appliance,
+            schema=vol.Schema({vol.Required("key"): str}),
+        )
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
