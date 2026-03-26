@@ -382,6 +382,14 @@ class ApplianceAdvisorCard extends HTMLElement {
 
     const summaryEntityId = this._config.entity;
     const summaryState    = this._hass.states[summaryEntityId];
+
+    if (!summaryState) {
+      console.warn("appliance-advisor-card: entity not found:", summaryEntityId);
+    } else {
+      console.debug("appliance-advisor-card: entity state:", summaryState.state,
+                     "attributes:", JSON.stringify(summaryState.attributes));
+    }
+
     const appliances      = summaryState?.attributes?.appliances || [];
 
     this._updateBanner(appliances);

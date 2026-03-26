@@ -83,12 +83,16 @@ class AdvisorCoordinator(DataUpdateCoordinator):
 
         # Merge appliances: config entry + service-managed store
         merged_data = dict(self._entry_data)
+        entry_appliances = dict(merged_data.get("appliances", {}))
         if self._appliance_store:
             store_appliances = self._appliance_store.get_all()
-            if store_appliances:
-                entry_appliances = dict(merged_data.get("appliances", {}))
-                entry_appliances.update(store_appliances)
-                merged_data["appliances"] = entry_appliances
+            _LOGGER.debug("Advisor store appliances: %d, entry appliances: %d",
+                          len(store_appliances), len(entry_appliances))
+            entry_appliances.update(store_appliances)
+        merged_data["appliances"] = entry_appliances
+
+        if not entry_appliances:
+            _LOGGER.warning("Advisor: no appliances configured (entry + store both empty)")
 
         # Track running state transitions for run history
         if self._run_history_store:
@@ -105,6 +109,7 @@ class AdvisorCoordinator(DataUpdateCoordinator):
                 deadline_data=deadline_data,
                 run_history_store=self._run_history_store,
             )
+            _LOGGER.debug("Advisor recommendations: %d appliances", len(self._advisor_recommendations))
         except Exception:
             _LOGGER.exception("Advisor evaluation failed")
 

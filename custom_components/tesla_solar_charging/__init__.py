@@ -126,7 +126,10 @@ async def _async_setup_advisor_entry(hass: HomeAssistant, entry: ConfigEntry) ->
         """Replace all appliances from a list of power entity IDs."""
         entities = call.data["entities"]
         result = await appliance_store.async_configure_from_entities(entities)
-        _LOGGER.info("Advisor: configured %d appliances from entities", len(result))
+        _LOGGER.info("Advisor: configured %d appliances from entities: %s", len(result), list(result.keys()))
+        # Verify store has data
+        verify = appliance_store.get_all()
+        _LOGGER.info("Advisor: store now has %d appliances after save", len(verify))
         await coordinator.async_request_refresh()
 
     async def handle_add_appliance(call):
