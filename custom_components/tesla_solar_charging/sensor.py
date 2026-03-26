@@ -235,6 +235,8 @@ class ForecastSensor(CoordinatorEntity, SensorEntity):
             "blended_kwh": c.forecast_kwh,
             "pessimistic_kwh": c._forecast_pessimistic_kwh,
             "sources": c._forecast_sources,
+            "low_solar_warning": c.low_solar_warning,
+            "multi_day_outlook": c.multi_day_outlook,
         }
         tracker = getattr(c, 'forecast_tracker', None)
         if tracker:
@@ -402,6 +404,8 @@ class DebugSensor(CoordinatorEntity, SensorEntity):
             "forecast_sources": c._forecast_sources,
             "cloud_strategy": c.cloud_strategy,
             "best_charging_window": c.best_charging_window,
+            "low_solar_warning": c.low_solar_warning,
+            "multi_day_outlook": c.multi_day_outlook,
             # Accuracy
             "correction_factor": tracker.correction_factor if tracker else None,
             "seasonal_correction_factor": tracker.seasonal_correction_factor if tracker else None,

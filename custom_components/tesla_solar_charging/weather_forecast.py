@@ -162,7 +162,7 @@ async def fetch_solar_forecast(
         "longitude": longitude,
         "daily": "shortwave_radiation_sum,sunshine_duration",
         "timezone": "auto",
-        "forecast_days": 3,
+        "forecast_days": 7,
     }
 
     try:
@@ -182,6 +182,7 @@ async def fetch_solar_forecast(
             return None
 
         result = {}
+        all_days = []
         today_str = datetime.now().strftime("%Y-%m-%d")
 
         for i, date_str in enumerate(dates):
@@ -189,18 +190,17 @@ async def fetch_solar_forecast(
             rad_kwh = radiation[i] / 3.6 if radiation[i] else 0
             sun_hours = sunshine[i] / 3600 if sunshine[i] else 0  # seconds to hours
 
+            day_entry = {
+                "radiation_kwh_m2": round(rad_kwh, 2),
+                "sunshine_hours": round(sun_hours, 1),
+                "date": date_str,
+            }
+            all_days.append(day_entry)
+
             if date_str == today_str:
-                result["today"] = {
-                    "radiation_kwh_m2": round(rad_kwh, 2),
-                    "sunshine_hours": round(sun_hours, 1),
-                    "date": date_str,
-                }
+                result["today"] = day_entry
             elif "today" in result and "tomorrow" not in result:
-                result["tomorrow"] = {
-                    "radiation_kwh_m2": round(rad_kwh, 2),
-                    "sunshine_hours": round(sun_hours, 1),
-                    "date": date_str,
-                }
+                result["tomorrow"] = day_entry
 
         if "tomorrow" not in result and len(dates) >= 2:
             rad_kwh = radiation[1] / 3.6 if radiation[1] else 0
@@ -211,6 +211,7 @@ async def fetch_solar_forecast(
                 "date": dates[1],
             }
 
+        result["days"] = all_days
         return result
 
     except Exception as err:

@@ -55,9 +55,9 @@ from .coordinator import SolarChargingCoordinator
 from .forecast_blend import ForecastSource, blend_forecasts
 from .forecast_tracker import ForecastTracker
 from .inverter_controller import InverterController
-from .notification import CALLBACK_CHARGE_TONIGHT, CALLBACK_SKIP_CHARGE, send_action_notification, send_plan_notification
+from .notification import CALLBACK_CHARGE_TONIGHT, CALLBACK_SKIP_CHARGE, send_action_notification, send_alert_notification, send_plan_notification
 from .octopus_client import OctopusItalyClient
-from .planner import create_charge_plan
+from .planner import check_multi_day_outlook, create_charge_plan
 from .weather_forecast import fetch_solar_forecast
 
 _LOGGER = logging.getLogger(__name__)
@@ -372,13 +372,14 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
                 )
 
     # Source 2: Solcast (if configured)
+    solcast_data = None
     solcast_key = data.get(CONF_SOLCAST_API_KEY)
     solcast_rid = data.get(CONF_SOLCAST_RESOURCE_ID)
     if solcast_key and solcast_rid:
         from .solcast_client import fetch_solcast_forecast
-        solcast = await fetch_solcast_forecast(hass, solcast_key, solcast_rid)
-        if solcast and len(solcast) >= 2:
-            tomorrow_sc = solcast[1]
+        solcast_data = await fetch_solcast_forecast(hass, solcast_key, solcast_rid)
+        if solcast_data and len(solcast_data) >= 2:
+            tomorrow_sc = solcast_data[1]
             sources.append(ForecastSource(
                 name="solcast",
                 production_kwh=tomorrow_sc.production_kwh_p50,
@@ -387,9 +388,10 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
             ))
 
     # Source 3: Forecast.Solar (if enabled)
+    fc_solar_data = None
     if data.get(CONF_FORECAST_SOLAR_ENABLED):
         from .forecast_solar_client import fetch_forecast_solar
-        fc_solar = await fetch_forecast_solar(
+        fc_solar_data = await fetch_forecast_solar(
             hass,
             lat,
             lon,
@@ -397,10 +399,10 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
             data.get(CONF_FORECAST_SOLAR_AZIMUTH, DEFAULT_FORECAST_SOLAR_AZIMUTH),
             data.get(CONF_PV_SYSTEM_KWP, 6.0),
         )
-        if fc_solar and len(fc_solar) >= 2:
+        if fc_solar_data and len(fc_solar_data) >= 2:
             sources.append(ForecastSource(
                 name="forecast_solar",
-                production_kwh=fc_solar[1].production_kwh,
+                production_kwh=fc_solar_data[1].production_kwh,
             ))
 
     # Blend all sources
@@ -435,6 +437,126 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
             elif tomorrow_str in hourly:
                 coordinator.cloud_strategy = hourly[tomorrow_str].cloud_strategy
                 coordinator.best_charging_window = hourly[tomorrow_str].best_window_desc
+
+    # --- Multi-day solar outlook ---
+    await _check_multi_day_outlook(hass, coordinator, data, forecast, solcast_data, fc_solar_data)
+
+
+async def _check_multi_day_outlook(
+    hass: HomeAssistant,
+    coordinator: SolarChargingCoordinator,
+    data: dict,
+    forecast: dict | None,
+    solcast_data,
+    fc_solar_data,
+) -> None:
+    """Check multi-day solar outlook and warn if upcoming days are poor."""
+    if not forecast or "days" not in forecast:
+        return
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    perf_ratio = data.get(CONF_PERFORMANCE_RATIO, DEFAULT_PERFORMANCE_RATIO)
+    system_kwp = data.get(CONF_PV_SYSTEM_KWP, 6.0)
+    correction = 1.0
+    if hasattr(coordinator, 'forecast_tracker') and coordinator.forecast_tracker:
+        correction = coordinator.forecast_tracker.seasonal_correction_factor
+
+    from .weather_forecast import estimate_solar_production
+
+    # Build per-day blended production for all future days
+    multi_day_production: list[tuple[str, float]] = []
+    for day in forecast["days"]:
+        if day["date"] <= today_str:
+            continue
+        om_prod = estimate_solar_production(
+            day["radiation_kwh_m2"], system_kwp,
+            performance_ratio=perf_ratio, correction_factor=correction,
+        )
+        day_sources = [ForecastSource(name="open_meteo", production_kwh=om_prod)]
+
+        if solcast_data:
+            for sc in solcast_data:
+                if sc.date == day["date"]:
+                    day_sources.append(ForecastSource(
+                        name="solcast", production_kwh=sc.production_kwh_p50,
+                        weight=1.5, pessimistic_kwh=sc.production_kwh_p10,
+                    ))
+                    break
+
+        if fc_solar_data:
+            for fcs in fc_solar_data:
+                if fcs.date == day["date"]:
+                    day_sources.append(ForecastSource(
+                        name="forecast_solar", production_kwh=fcs.production_kwh,
+                    ))
+                    break
+
+        day_blended = blend_forecasts(day_sources)
+        multi_day_production.append((day["date"], day_blended.blended_kwh))
+
+    if not multi_day_production:
+        return
+
+    # Read Tesla SOC
+    tesla_soc = 50.0
+    if data.get(CONF_TESLA_BATTERY_ENTITY):
+        state = hass.states.get(data[CONF_TESLA_BATTERY_ENTITY])
+        if state and state.state not in ("unknown", "unavailable"):
+            try:
+                tesla_soc = float(state.state)
+            except (ValueError, TypeError):
+                pass
+
+    # Read charge limit
+    from homeassistant.helpers import entity_registry as er
+    registry = er.async_get(hass)
+    target_soc = 80.0
+    charge_limit_entity = registry.async_get_entity_id(
+        "number", DOMAIN, f"{coordinator._entry_id}_charge_limit"
+    )
+    if charge_limit_entity:
+        state = hass.states.get(charge_limit_entity)
+        if state and state.state not in ("unknown", "unavailable"):
+            try:
+                target_soc = float(state.state)
+            except (ValueError, TypeError):
+                pass
+
+    home_battery_soc = 50.0
+    if data.get(CONF_BATTERY_SOC_ENTITY):
+        state = hass.states.get(data[CONF_BATTERY_SOC_ENTITY])
+        if state and state.state not in ("unknown", "unavailable"):
+            try:
+                home_battery_soc = float(state.state)
+            except (ValueError, TypeError):
+                pass
+
+    outlook = check_multi_day_outlook(
+        daily_production_list=multi_day_production,
+        tesla_soc=tesla_soc,
+        target_soc=target_soc,
+        tesla_battery_kwh=data.get(CONF_TESLA_BATTERY_KWH, DEFAULT_TESLA_BATTERY_KWH),
+        home_battery_kwh=data.get(CONF_HOME_BATTERY_KWH, 10.0),
+        home_battery_soc=home_battery_soc,
+        avg_house_consumption_kwh=data.get(CONF_AVG_HOUSE_CONSUMPTION_KWH, DEFAULT_AVG_HOUSE_CONSUMPTION_KWH),
+    )
+
+    coordinator.low_solar_warning = outlook.warning
+    coordinator.multi_day_outlook = {
+        "poor_days": outlook.poor_days,
+        "total_days_checked": outlook.total_days_checked,
+        "total_excess_kwh": outlook.total_excess_kwh,
+        "kwh_needed": outlook.kwh_needed,
+        "daily_forecasts": outlook.daily_forecasts,
+    }
+
+    if outlook.warning:
+        _LOGGER.info("Multi-day outlook: %s", outlook.warning)
+        chat_id = data.get(CONF_TELEGRAM_CHAT_ID)
+        if chat_id:
+            from .notification import format_low_solar_warning
+            msg = format_low_solar_warning(outlook)
+            await send_alert_notification(hass, int(chat_id), msg)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -101,6 +101,8 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._daily_charge_seconds = 0
         self._forecast_sources: list[dict] = []
         self._forecast_pessimistic_kwh = 0.0
+        self._low_solar_warning: str | None = None
+        self._multi_day_outlook: dict | None = None
         self._last_grid_power = 0.0
         self._last_grid_voltage = 0.0
         self._last_battery_soc = 0.0
@@ -170,6 +172,22 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
     @force_charge.setter
     def force_charge(self, value: bool) -> None:
         self._force_charge = value
+
+    @property
+    def low_solar_warning(self) -> str | None:
+        return self._low_solar_warning
+
+    @low_solar_warning.setter
+    def low_solar_warning(self, value: str | None) -> None:
+        self._low_solar_warning = value
+
+    @property
+    def multi_day_outlook(self) -> dict | None:
+        return self._multi_day_outlook
+
+    @multi_day_outlook.setter
+    def multi_day_outlook(self, value: dict | None) -> None:
+        self._multi_day_outlook = value
 
     @property
     def cloud_strategy(self) -> str:

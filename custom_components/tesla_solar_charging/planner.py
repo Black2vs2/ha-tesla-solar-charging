@@ -87,6 +87,77 @@ def create_charge_plan(
     )
 
 
+@dataclass
+class MultiDayOutlook:
+    """Result of checking multi-day solar forecast."""
+    poor_days: int
+    total_days_checked: int
+    daily_forecasts: list[dict]
+    total_excess_kwh: float
+    kwh_needed: float
+    warning: str | None
+
+
+def check_multi_day_outlook(
+    daily_production_list: list[tuple[str, float]],
+    tesla_soc: float,
+    target_soc: float,
+    tesla_battery_kwh: float,
+    home_battery_kwh: float,
+    home_battery_soc: float,
+    avg_house_consumption_kwh: float,
+) -> MultiDayOutlook:
+    """Check if upcoming days have enough solar to charge the Tesla.
+
+    Returns a warning if the cumulative solar excess over the next days
+    can't cover what the Tesla needs.
+    """
+    soc_gap = max(0, target_soc - tesla_soc)
+    kwh_needed = tesla_battery_kwh * soc_gap / 100
+
+    if kwh_needed <= 0:
+        return MultiDayOutlook(
+            poor_days=0, total_days_checked=len(daily_production_list),
+            daily_forecasts=[], total_excess_kwh=0, kwh_needed=0, warning=None,
+        )
+
+    daily_forecasts = []
+    total_excess = 0.0
+    poor_days = 0
+
+    for date, production in daily_production_list:
+        excess = estimate_solar_excess(
+            production, home_battery_kwh, home_battery_soc, avg_house_consumption_kwh
+        )
+        daily_forecasts.append({
+            "date": date,
+            "production_kwh": round(production, 1),
+            "excess_kwh": round(excess, 1),
+        })
+        total_excess += excess
+        if excess < 5.0:
+            poor_days += 1
+
+    warning = None
+    if poor_days > 0 and total_excess < kwh_needed and len(daily_production_list) > 0:
+        shortfall = kwh_needed - total_excess
+        warning = (
+            f"Low solar outlook: {total_excess:.0f} kWh excess expected "
+            f"over the next {len(daily_production_list)} days, "
+            f"but Tesla needs {kwh_needed:.0f} kWh ({shortfall:.0f} kWh shortfall). "
+            f"Consider charging more today."
+        )
+
+    return MultiDayOutlook(
+        poor_days=poor_days,
+        total_days_checked=len(daily_production_list),
+        daily_forecasts=daily_forecasts,
+        total_excess_kwh=round(total_excess, 1),
+        kwh_needed=round(kwh_needed, 1),
+        warning=warning,
+    )
+
+
 def format_plan_message(plan: ChargePlan) -> str:
     """Format a charge plan into a human-readable message."""
     status = "Charge tonight" if plan.charge_tonight else "Skip night charge — use solar"

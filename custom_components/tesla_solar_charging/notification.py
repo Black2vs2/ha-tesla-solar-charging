@@ -4,7 +4,7 @@ import logging
 
 from homeassistant.core import HomeAssistant
 
-from .planner import ChargePlan, format_plan_message
+from .planner import ChargePlan, MultiDayOutlook, format_plan_message
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -149,6 +149,28 @@ def format_daily_report(
         f"Forecast: {forecast_kwh:.1f} kWh | Actual: {actual_production_kwh:.1f} kWh "
         f"(accuracy: {accuracy_str})"
     )
+
+
+def format_low_solar_warning(outlook: MultiDayOutlook) -> str:
+    """Format a multi-day low solar outlook warning."""
+    shortfall = outlook.kwh_needed - outlook.total_excess_kwh
+    lines = [
+        "*Low Solar Forecast Warning*",
+        "",
+        f"The next {outlook.total_days_checked} days look poor for solar charging "
+        f"({outlook.poor_days} weak day{'s' if outlook.poor_days != 1 else ''}).",
+        "",
+        f"Expected solar excess: {outlook.total_excess_kwh:.0f} kWh",
+        f"Tesla needs: {outlook.kwh_needed:.0f} kWh",
+        f"Shortfall: {shortfall:.0f} kWh",
+        "",
+    ]
+    for day in outlook.daily_forecasts:
+        emoji = "+" if day["excess_kwh"] >= 5 else "-"
+        lines.append(f"  {day['date']}: {day['production_kwh']:.0f} kWh prod / {day['excess_kwh']:.0f} kWh excess ({emoji})")
+    lines.append("")
+    lines.append(f"Consider charging an extra {shortfall:.0f} kWh today while solar is available.")
+    return "\n".join(lines)
 
 
 async def send_alert_notification(
