@@ -98,7 +98,7 @@ class EnergyDashboardCard extends HTMLElement {
           position: relative;
           display: grid;
           grid-template-columns: repeat(${g.columns}, 1fr);
-          grid-template-rows: repeat(${g.rows}, 100px);
+          grid-template-rows: repeat(${g.rows}, minmax(100px, auto));
           gap: ${g.gap}px;
           padding: ${g.gap}px;
           border: 1px solid var(--divider-color, #21262d);
