@@ -237,6 +237,7 @@ class ForecastSensor(CoordinatorEntity, SensorEntity):
             "sources": c._forecast_sources,
             "low_solar_warning": c.low_solar_warning,
             "multi_day_outlook": c.multi_day_outlook,
+            "hourly_forecast": c._hourly_forecast_today,
         }
         tracker = getattr(c, 'forecast_tracker', None)
         if tracker:

@@ -81,6 +81,17 @@ class DailyHourlyForecast:
         end = min(start + 4, 24)
         return f"{start:02d}:00-{end:02d}:00"
 
+    def to_hourly_attr(self) -> list[dict]:
+        """Convert hourly data to a list of dicts for sensor attributes."""
+        return [
+            {
+                "hour": f"{h.hour:02d}:00",
+                "radiation_w_m2": h.radiation_w_m2,
+                "cloud_cover": h.cloud_cover,
+            }
+            for h in self.hours
+        ]
+
 
 def parse_hourly_forecast(data: dict) -> dict[str, DailyHourlyForecast]:
     """Parse Open-Meteo hourly response into per-day forecasts."""

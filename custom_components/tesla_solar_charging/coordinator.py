@@ -95,6 +95,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._prev_charger_connected = None
         self._cloud_strategy = "unknown"
         self._best_charging_window = "Unknown"
+        self._hourly_forecast_today: list[dict] = []
         self._daily_solar_kwh = 0.0
         self._daily_grid_kwh = 0.0
         self._daily_peak_amps = 0

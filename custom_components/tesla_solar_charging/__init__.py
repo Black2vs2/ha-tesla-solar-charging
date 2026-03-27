@@ -226,6 +226,11 @@ async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -
             str(Path(__file__).parent / "frontend" / "appliance-advisor-card.js"),
             cache_headers=True,
         ),
+        StaticPathConfig(
+            f"/{DOMAIN}/energy-dashboard-card.js",
+            str(Path(__file__).parent / "frontend" / "energy-dashboard-card.js"),
+            cache_headers=False,
+        ),
     ])
     async_register_built_in_panel(
         hass,
@@ -437,9 +442,11 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
             if today_str in hourly:
                 coordinator.cloud_strategy = hourly[today_str].cloud_strategy
                 coordinator.best_charging_window = hourly[today_str].best_window_desc
+                coordinator._hourly_forecast_today = hourly[today_str].to_hourly_attr()
             elif tomorrow_str in hourly:
                 coordinator.cloud_strategy = hourly[tomorrow_str].cloud_strategy
                 coordinator.best_charging_window = hourly[tomorrow_str].best_window_desc
+                coordinator._hourly_forecast_today = []
 
     # --- Multi-day solar outlook ---
     await _check_multi_day_outlook(hass, coordinator, data, forecast, solcast_data, fc_solar_data)
