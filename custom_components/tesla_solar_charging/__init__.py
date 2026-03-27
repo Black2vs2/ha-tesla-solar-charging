@@ -226,6 +226,11 @@ async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -
             str(Path(__file__).parent / "frontend" / "appliance-advisor-card.js"),
             cache_headers=True,
         ),
+        StaticPathConfig(
+            f"/{DOMAIN}/energy-dashboard-card.js",
+            str(Path(__file__).parent / "frontend" / "energy-dashboard-card.js"),
+            cache_headers=False,
+        ),
     ])
     async_register_built_in_panel(
         hass,

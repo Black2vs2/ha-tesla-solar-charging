@@ -1,3 +1,6 @@
+// Import the energy dashboard card component
+import "./energy-dashboard-card.js";
+
 class TeslaSolarChargingPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
@@ -6,6 +9,7 @@ class TeslaSolarChargingPanel extends HTMLElement {
       this._render();
     }
     this._update();
+    this._renderDashboard();
   }
 
   set panel(panel) {
@@ -625,6 +629,46 @@ class TeslaSolarChargingPanel extends HTMLElement {
       const debugJson = debugState?.attributes?.json || "{}";
       debugEl.textContent = debugJson;
     }
+  }
+
+  _renderDashboard() {
+    const prefix = "sensor.tesla_solar_charging_";
+    const defaultConfig = {
+      grid: { columns: 6, rows: 6, gap: 8 },
+      cards: [
+        {
+          type: "solar", col: 1, row: 1, span_col: 2, span_row: 1,
+          forecast_entity: `${prefix}solar_forecast`,
+          state_entity: `${prefix}state`,
+        },
+        {
+          type: "grid", col: 3, row: 1, span_col: 2, span_row: 1,
+        },
+        {
+          type: "battery", col: 5, row: 1, span_col: 2, span_row: 2,
+        },
+        {
+          type: "tesla", col: 1, row: 2, span_col: 2, span_row: 2,
+          state_entity: `${prefix}state`,
+          amps_entity: `${prefix}charging_amps`,
+        },
+        {
+          type: "forecast", col: 1, row: 4, span_col: 4, span_row: 1,
+          forecast_entity: `${prefix}solar_forecast`,
+        },
+        {
+          type: "debug", col: 1, row: 5, span_col: 6, span_row: 2,
+        },
+      ],
+    };
+
+    let dashEl = this.querySelector("energy-dashboard-card");
+    if (!dashEl) {
+      dashEl = document.createElement("energy-dashboard-card");
+      dashEl.setConfig(defaultConfig);
+      this.appendChild(dashEl);
+    }
+    dashEl.hass = this._hass;
   }
 }
 
