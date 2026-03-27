@@ -1,0 +1,17 @@
+{
+  "name": "ha-tesla-solar-charging",
+  "version": "3.0.50",
+  "description": "Home Assistant integration for solar-powered Tesla charging via BLE",
+  "private": true,
+  "scripts": {
+    "version:patch": "node scripts/bump-version.js patch",
+    "version:minor": "node scripts/bump-version.js minor",
+    "version:major": "node scripts/bump-version.js major"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Black2vs2/ha-tesla-solar-charging"
+  },
+  "author": "Luca (@black2vs2)",
+  "license": "MIT"
+}
