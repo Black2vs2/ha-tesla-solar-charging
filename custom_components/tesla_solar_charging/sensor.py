@@ -233,6 +233,7 @@ class ForecastSensor(CoordinatorEntity, SensorEntity):
         c = self.coordinator
         attrs = {
             "blended_kwh": c.forecast_kwh,
+            "today_kwh": c._forecast_today_kwh,
             "pessimistic_kwh": c._forecast_pessimistic_kwh,
             "sources": c._forecast_sources,
             "low_solar_warning": c.low_solar_warning,

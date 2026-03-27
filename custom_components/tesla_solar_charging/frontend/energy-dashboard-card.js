@@ -401,14 +401,23 @@ class EnergyDashboardCard extends HTMLElement {
   _renderSolar(el, cfg, badge) {
     const power = this._stateVal(cfg.entity);
     const attrs = this._stateAttrs(cfg.forecast_entity);
-    const forecastKwh = attrs.blended_kwh ?? "—";
+    const tomorrowKwh = attrs.blended_kwh ?? "—";
+    const todayForecastKwh = attrs.today_kwh ?? "—";
     const producing = power !== null && power > 10;
     const stateAttrs = this._stateAttrs(cfg.state_entity);
-    const todayKwh = stateAttrs.daily_solar_kwh ?? "—";
+    const todayProduced = stateAttrs.daily_solar_kwh ?? "—";
     const powerKw = power !== null ? (power / 1000).toFixed(1) : "0";
     const statusText = producing ? "in produzione" : "spento";
     const dotHtml = producing ? '<span class="edg-dot" style="color:#fbbf24"></span>' : "";
     const valueClass = producing ? "edg-c-solar" : "edg-c-muted";
+    // Today progress: produced vs forecast
+    let todayPct = 0;
+    if (typeof todayForecastKwh === "number" && todayForecastKwh > 0 && typeof todayProduced === "number") {
+      todayPct = Math.min(100, (todayProduced / todayForecastKwh) * 100);
+    }
+    const todayProdStr = typeof todayProduced === "number" ? todayProduced.toFixed(1) : todayProduced;
+    const todayFcStr = typeof todayForecastKwh === "number" ? todayForecastKwh.toFixed(1) : todayForecastKwh;
+    const tomorrowStr = typeof tomorrowKwh === "number" ? tomorrowKwh.toFixed(1) : tomorrowKwh;
     el.innerHTML = `${badge}
       <div class="edg-header">
         <div class="edg-icon edg-bg-solar">S</div>
@@ -421,7 +430,11 @@ class EnergyDashboardCard extends HTMLElement {
         <div class="edg-value ${valueClass}">${powerKw} kW</div>
         <div class="edg-sub">${dotHtml}${statusText}</div>
       </div>
-      <div class="edg-detail">Oggi: ${todayKwh} kWh &bull; Previsione: ${forecastKwh} kWh</div>`;
+      <div class="edg-detail">Oggi: ${todayProdStr} / ${todayFcStr} kWh</div>
+      <div class="edg-progress">
+        <div class="edg-progress-fill" style="width:${todayPct}%;background:#fbbf24"></div>
+      </div>
+      <div class="edg-detail">Domani: ${tomorrowStr} kWh</div>`;
   }
   _renderGrid(el, cfg, badge) {
     const power = this._stateVal(cfg.entity);

@@ -413,7 +413,40 @@ async def _update_forecast(hass: HomeAssistant, coordinator: SolarChargingCoordi
                 production_kwh=fc_solar_data[1].production_kwh,
             ))
 
-    # Blend all sources
+    # Blend today's sources
+    today_sources: list[ForecastSource] = []
+    if forecast and "today" in forecast:
+        from .weather_forecast import estimate_solar_production as _est
+        today_entry = forecast["today"]
+        perf_ratio_t = data.get(CONF_PERFORMANCE_RATIO, DEFAULT_PERFORMANCE_RATIO)
+        correction_t = 1.0
+        if hasattr(coordinator, 'forecast_tracker') and coordinator.forecast_tracker:
+            correction_t = coordinator.forecast_tracker.seasonal_correction_factor
+        today_prod = _est(
+            today_entry["radiation_kwh_m2"],
+            data.get(CONF_PV_SYSTEM_KWP, 6.0),
+            performance_ratio=perf_ratio_t,
+            correction_factor=correction_t,
+        )
+        today_sources.append(ForecastSource(name="open_meteo", production_kwh=today_prod))
+    if solcast_data and len(solcast_data) >= 1:
+        today_sources.append(ForecastSource(
+            name="solcast",
+            production_kwh=solcast_data[0].production_kwh_p50,
+            weight=1.5,
+        ))
+    if fc_solar_data and len(fc_solar_data) >= 1:
+        today_sources.append(ForecastSource(
+            name="forecast_solar",
+            production_kwh=fc_solar_data[0].production_kwh,
+        ))
+    if today_sources:
+        today_blended = blend_forecasts(today_sources)
+        coordinator._forecast_today_kwh = today_blended.blended_kwh
+    else:
+        coordinator._forecast_today_kwh = 0.0
+
+    # Blend all sources (tomorrow)
     blended = blend_forecasts(sources)
     coordinator.forecast_kwh = blended.blended_kwh
     coordinator._forecast_pessimistic_kwh = blended.pessimistic_kwh
