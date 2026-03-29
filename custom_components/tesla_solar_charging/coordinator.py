@@ -27,6 +27,7 @@ from .const import (
     CONF_OCTOPUS_SMART_CHARGE_ENTITY,
     CONF_AVG_HOUSE_CONSUMPTION_KWH,
     CONF_HOME_BATTERY_KWH,
+    CONF_PLANNING_TIME,
     CONF_SAFETY_BUFFER_AMPS,
     CONF_TELEGRAM_CHAT_ID,
     CONF_TESLA_BATTERY_ENTITY,
@@ -44,6 +45,11 @@ from .const import (
     DEFAULT_SAFETY_BUFFER_AMPS,
     DEFAULT_UPDATE_INTERVAL,
     MIN_CHARGING_AMPS,
+    POLLING_MODE_ACTIVE,
+    POLLING_MODE_CLOSE,
+    POLLING_MODE_LAZY,
+    POLLING_MODE_OFF,
+    POLLING_SOC_CLOSE_THRESHOLD,
     STATE_CHARGING_NIGHT,
     STATE_CHARGING_SOLAR,
     STATE_ERROR,
@@ -109,6 +115,9 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._last_grid_voltage = 0.0
         self._last_battery_soc = 0.0
         self._last_battery_power = 0.0
+        self._current_polling_mode: str = POLLING_MODE_LAZY
+        self._last_tesla_soc: float | None = None
+        self._last_tesla_limit: float | None = None
 
     # --- Public properties ---
 
@@ -287,6 +296,34 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
             )
         return is_home
 
+    def _determine_polling_mode(self, sun_up: bool) -> str:
+        """Determine BLE polling mode based on current charging state."""
+        if not self._enabled:
+            return POLLING_MODE_OFF
+
+        if not self._is_home():
+            return POLLING_MODE_OFF
+
+        is_charging = self._state in (STATE_CHARGING_SOLAR, STATE_CHARGING_NIGHT)
+
+        # Night + not charging + not force_charge + not night_charge_planned → off
+        if not sun_up and not is_charging and not self._force_charge and not self._night_charge_planned:
+            return POLLING_MODE_OFF
+
+        # Not charging + not force_charge → lazy
+        if not is_charging and not self._force_charge:
+            return POLLING_MODE_LAZY
+
+        # Charging or force_charge: check SOC proximity
+        if (
+            self._last_tesla_soc is not None
+            and self._last_tesla_limit is not None
+            and self._last_tesla_limit - self._last_tesla_soc <= POLLING_SOC_CLOSE_THRESHOLD
+        ):
+            return POLLING_MODE_CLOSE
+
+        return POLLING_MODE_ACTIVE
+
     def _is_charger_on(self) -> bool:
         state = self.hass.states.get(self._ble.charger_switch)
         if state is None:
@@ -314,6 +351,17 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
     # --- Main loop ---
 
     async def _async_update_data(self) -> dict:
+        # Update polling mode (even when disabled, to set off)
+        sun_up = is_up(self.hass)
+        desired_mode = self._determine_polling_mode(sun_up)
+        if desired_mode != self._current_polling_mode:
+            try:
+                await self._ble.set_polling_mode(desired_mode)
+                self._current_polling_mode = desired_mode
+                _LOGGER.info("BLE polling mode changed to: %s", desired_mode)
+            except Exception as err:
+                _LOGGER.warning("Failed to set polling mode: %s", err)
+
         if not self._enabled:
             return {}
 
@@ -376,6 +424,11 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         # Enter night mode if not already
         if not self._night_mode_active:
             await self._enter_night_mode()
+
+        # Track Tesla SOC/limit for polling mode decisions
+        if self._entry_data.get(CONF_TESLA_BATTERY_ENTITY):
+            self._last_tesla_soc = self._get_float(self._entry_data[CONF_TESLA_BATTERY_ENTITY])
+        self._last_tesla_limit = self._get_own_float("charge_limit")
 
         grid_limit = self._entry_data.get(CONF_GRID_POWER_LIMIT, DEFAULT_GRID_POWER_LIMIT)
         max_amps = self._entry_data.get(CONF_MAX_CHARGING_AMPS, DEFAULT_MAX_CHARGING_AMPS)
@@ -467,6 +520,10 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         if self._entry_data.get(CONF_TESLA_BATTERY_ENTITY):
             tesla_battery = self._get_float(self._entry_data[CONF_TESLA_BATTERY_ENTITY])
         tesla_limit = self._get_own_float("charge_limit")
+
+        # Track for polling mode decisions
+        self._last_tesla_soc = tesla_battery
+        self._last_tesla_limit = tesla_limit
 
         sensor_state = SensorState(
             grid_power=grid_power,

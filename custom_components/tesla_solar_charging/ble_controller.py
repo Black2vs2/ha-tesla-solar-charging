@@ -24,11 +24,13 @@ class BLEController:
         charger_switch: str,
         charging_amps: str,
         wake_button: str,
+        polling_mode_entity: str | None = None,
     ) -> None:
         self.hass = hass
         self.charger_switch = charger_switch
         self.charging_amps = charging_amps
         self.wake_button = wake_button
+        self.polling_mode_entity = polling_mode_entity
         self._consecutive_failures = 0
         self._last_error: str | None = None
 
@@ -139,6 +141,21 @@ class BLEController:
             await self.hass.services.async_call(
                 "button", "press",
                 {"entity_id": self.wake_button},
+                blocking=True,
+            )
+            self._record_success()
+        except Exception as err:
+            self._record_failure(err)
+            raise
+
+    async def set_polling_mode(self, mode: str) -> None:
+        if self.polling_mode_entity is None:
+            return
+        _LOGGER.info("Setting BLE polling mode to %s", mode)
+        try:
+            await self.hass.services.async_call(
+                "select", "select_option",
+                {"entity_id": self.polling_mode_entity, "option": mode},
                 blocking=True,
             )
             self._record_success()

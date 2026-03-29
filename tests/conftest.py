@@ -4,6 +4,14 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+
+class _FakeDataUpdateCoordinator:
+    """Minimal stand-in for homeassistant DataUpdateCoordinator."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+
 # Mock all homeassistant modules before any tesla_solar_charging imports
 for mod in [
     "homeassistant",
@@ -22,6 +30,13 @@ for mod in [
     "homeassistant.helpers.update_coordinator",
 ]:
     sys.modules.setdefault(mod, MagicMock())
+
+# Replace the mocked DataUpdateCoordinator with a real class so that
+# subclasses (e.g. SolarChargingCoordinator) keep their real methods
+# instead of inheriting MagicMock auto-attributes.
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
+    _FakeDataUpdateCoordinator
+)
 
 # Also mock voluptuous and aiohttp since they may not be installed
 sys.modules.setdefault("voluptuous", MagicMock())

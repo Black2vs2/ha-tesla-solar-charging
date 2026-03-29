@@ -23,6 +23,7 @@ from .const import (
     CONF_BLE_CHARGE_LIMIT,
     CONF_BLE_CHARGER_SWITCH,
     CONF_BLE_CHARGING_AMPS,
+    CONF_BLE_POLLING_MODE_ENTITY,
     CONF_BLE_WAKE_BUTTON,
     CONF_DEYE_BATTERY_DISCHARGE_ENTITY,
     CONF_DEYE_ENERGY_PATTERN_ENTITY,
@@ -242,6 +243,7 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_BLE_CHARGING_AMPS): NUMBER_SELECTOR,
                 vol.Required(CONF_BLE_WAKE_BUTTON): BUTTON_SELECTOR,
                 vol.Optional(CONF_BLE_CHARGE_LIMIT): NUMBER_SELECTOR,
+                vol.Optional(CONF_BLE_POLLING_MODE_ENTITY): SELECT_SELECTOR,
                 # Optional — Tesla
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY): TRACKER_SELECTOR,
                 vol.Optional(CONF_HOME_LOCATION_STATES, default=DEFAULT_HOME_LOCATION_STATES): str,
@@ -349,6 +351,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 vol.Required(CONF_BLE_CHARGING_AMPS, default=data.get(CONF_BLE_CHARGING_AMPS, "")): NUMBER_SELECTOR,
                 vol.Required(CONF_BLE_WAKE_BUTTON, default=data.get(CONF_BLE_WAKE_BUTTON, "")): BUTTON_SELECTOR,
                 vol.Optional(CONF_BLE_CHARGE_LIMIT, default=data.get(CONF_BLE_CHARGE_LIMIT, "")): NUMBER_SELECTOR,
+                vol.Optional(CONF_BLE_POLLING_MODE_ENTITY, default=data.get(CONF_BLE_POLLING_MODE_ENTITY, "")): SELECT_SELECTOR,
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY, default=data.get(CONF_TESLA_LOCATION_ENTITY, "")): TRACKER_SELECTOR,
                 vol.Optional(CONF_HOME_LOCATION_STATES, default=data.get(CONF_HOME_LOCATION_STATES, DEFAULT_HOME_LOCATION_STATES)): str,
                 vol.Optional(CONF_TESLA_BATTERY_ENTITY, default=data.get(CONF_TESLA_BATTERY_ENTITY, "")): SENSOR_SELECTOR,

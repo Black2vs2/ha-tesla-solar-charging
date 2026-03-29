@@ -14,6 +14,7 @@ from .const import (
     CONF_BATTERY_SOC_ENTITY,
     CONF_BLE_CHARGER_SWITCH,
     CONF_BLE_CHARGING_AMPS,
+    CONF_BLE_POLLING_MODE_ENTITY,
     CONF_BLE_WAKE_BUTTON,
     CONF_DAILY_PRODUCTION_ENTITY,
     CONF_DEYE_BATTERY_DISCHARGE_ENTITY,
@@ -189,6 +190,7 @@ async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -
         charger_switch=data[CONF_BLE_CHARGER_SWITCH],
         charging_amps=data[CONF_BLE_CHARGING_AMPS],
         wake_button=data[CONF_BLE_WAKE_BUTTON],
+        polling_mode_entity=data.get(CONF_BLE_POLLING_MODE_ENTITY),
     )
 
     inverter = InverterController(
@@ -272,6 +274,28 @@ async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -
     unsub_planner = async_track_time_change(
         hass, _run_planner, hour=hour, minute=minute, second=0
     )
+
+    # Schedule pre-planner BLE wake-up (10 min before planner)
+    pre_plan_minute = minute - 10
+    pre_plan_hour = hour
+    if pre_plan_minute < 0:
+        pre_plan_minute += 60
+        pre_plan_hour = (pre_plan_hour - 1) % 24
+
+    async def _pre_planner_wake(now):
+        from .const import POLLING_MODE_LAZY
+        if coordinator._current_polling_mode == "off":
+            try:
+                await coordinator._ble.set_polling_mode(POLLING_MODE_LAZY)
+                coordinator._current_polling_mode = POLLING_MODE_LAZY
+                _LOGGER.info("Pre-planner: switched to lazy polling for SOC grab")
+            except Exception as err:
+                _LOGGER.warning("Pre-planner: failed to set lazy mode: %s", err)
+
+    unsub_pre_planner = async_track_time_change(
+        hass, _pre_planner_wake, hour=pre_plan_hour, minute=pre_plan_minute, second=0
+    )
+    entry.async_on_unload(unsub_pre_planner)
 
     # Listen for Telegram callbacks
     @callback
@@ -728,6 +752,16 @@ async def _execute_planner(hass: HomeAssistant, coordinator: SolarChargingCoordi
 
     # Set planned state (will be overridden by auto-execute or callback)
     coordinator.night_charge_planned = plan.charge_tonight
+
+    # Return to off if no night charge planned
+    if not plan.charge_tonight:
+        from .const import POLLING_MODE_OFF
+        try:
+            await coordinator._ble.set_polling_mode(POLLING_MODE_OFF)
+            coordinator._current_polling_mode = POLLING_MODE_OFF
+            _LOGGER.info("Post-planner: no night charge, polling set to off")
+        except Exception as err:
+            _LOGGER.warning("Post-planner: failed to set polling mode: %s", err)
 
 
 async def _apply_plan(hass: HomeAssistant, coordinator: SolarChargingCoordinator, data: dict, charge: bool, chat_id: int | None) -> None:

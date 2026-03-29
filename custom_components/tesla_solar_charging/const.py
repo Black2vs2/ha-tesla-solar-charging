@@ -14,6 +14,16 @@ CONF_BLE_CHARGER_SWITCH = "ble_charger_switch"
 CONF_BLE_CHARGING_AMPS = "ble_charging_amps"
 CONF_BLE_WAKE_BUTTON = "ble_wake_button"
 CONF_BLE_CHARGE_LIMIT = "ble_charge_limit"
+CONF_BLE_POLLING_MODE_ENTITY = "ble_polling_mode_entity"
+
+# Polling modes
+POLLING_MODE_OFF = "off"
+POLLING_MODE_LAZY = "lazy"
+POLLING_MODE_ACTIVE = "active"
+POLLING_MODE_CLOSE = "close"
+
+# SOC threshold for switching active -> close (percentage points below limit)
+POLLING_SOC_CLOSE_THRESHOLD = 2
 
 # Config keys — optional entities
 CONF_TESLA_LOCATION_ENTITY = "tesla_location_entity"
