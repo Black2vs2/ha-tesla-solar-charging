@@ -1,6 +1,6 @@
 {
   "name": "ha-tesla-solar-charging",
-  "version": "3.0.56",
+  "version": "3.0.57",
   "description": "Home Assistant integration for solar-powered Tesla charging via BLE",
   "private": true,
   "scripts": {

@@ -471,6 +471,7 @@ async def create_select_entity(var, definition):
         CONF_ID: cv.declare_id(definition["class"])(f"tesla_{definition['id']}_select"),
         CONF_NAME: definition["name"],
         CONF_ICON: definition["icon"],
+        CONF_DISABLED_BY_DEFAULT: False,
     }
 
     sel = cg.new_Pvariable(config[CONF_ID])
