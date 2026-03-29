@@ -150,6 +150,10 @@ SENSORS = [
     # Drive state sensors
     {"id": "odometer", "name": "Odometer", "icon": "mdi:counter", "device_class": "distance", "unit": "mi", "disabled_by_default": True},
     
+    # Polling diagnostics
+    {"id": "wake_count", "name": "Wake Count", "icon": "mdi:sleep-off", "entity_category": "diagnostic"},
+    {"id": "poll_count", "name": "Poll Count", "icon": "mdi:refresh", "entity_category": "diagnostic"},
+
     # Tire pressure sensors
     {"id": "tpms_front_left", "name": "TPMS Front Left", "icon": "mdi:car-tire-alert", "device_class": "pressure", "unit": "bar", "accuracy_decimals": 1},
     {"id": "tpms_front_right", "name": "TPMS Front Right", "icon": "mdi:car-tire-alert", "device_class": "pressure", "unit": "bar", "accuracy_decimals": 1},
