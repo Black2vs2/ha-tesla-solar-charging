@@ -1,5 +1,5 @@
 // Import the energy dashboard card component
-import "./energy-dashboard-card.js";
+import "/tesla_solar_charging/energy-dashboard-card.js";
 
 class TeslaSolarChargingPanel extends HTMLElement {
   set hass(hass) {

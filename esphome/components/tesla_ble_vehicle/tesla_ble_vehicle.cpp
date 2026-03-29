@@ -232,6 +232,11 @@ void TeslaBLEVehicle::update() {
     ESP_LOGI(TAG, "Polling VCSEC (mode=%d)", (int)current_polling_mode_);
     vehicle_->vcsec_poll();
     last_vcsec_poll_ = now;
+    poll_count_++;
+    if (state_manager_) {
+      auto *s = state_manager_->get_sensor("poll_count");
+      if (s) s->publish_state((float)poll_count_);
+    }
   }
 
   if (now - last_infotainment_poll_ >= polling_interval_ms_) {
@@ -528,6 +533,11 @@ int TeslaBLEVehicle::wake_vehicle() {
 
   ESP_LOGI(TAG, "Sending wake command");
   vehicle_->wake();
+  wake_count_++;
+  if (state_manager_) {
+    auto *s = state_manager_->get_sensor("wake_count");
+    if (s) s->publish_state((float)wake_count_);
+  }
   return 0;
 }
 

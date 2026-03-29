@@ -248,6 +248,10 @@ private:
     uint32_t lazy_disconnect_after_ms_{30000};  // 30s grace
     uint32_t lazy_poll_started_at_{0};
 
+    // Wake/poll counters for diagnostics
+    uint32_t wake_count_{0};
+    uint32_t poll_count_{0};
+
     PollingMode parse_polling_mode_(const std::string &mode);
     uint32_t get_polling_interval_ms_(PollingMode mode);
     void apply_polling_mode_(PollingMode mode);
