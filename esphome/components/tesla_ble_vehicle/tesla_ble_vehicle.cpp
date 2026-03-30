@@ -343,7 +343,7 @@ void TeslaBLEVehicle::apply_polling_mode_(PollingMode mode) {
              mode == PollingMode::ACTIVE ? "ACTIVE" : "CLOSE",
              polling_interval_ms_);
     lazy_poll_pending_ = false;
-    if (!this->parent()->enabled()) {
+    if (!this->parent()->enabled) {
       this->parent()->set_enabled(true);
     }
   }
