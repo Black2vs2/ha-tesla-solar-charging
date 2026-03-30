@@ -420,6 +420,7 @@ class TeslaPollingModeSelect : public select::Select {
 public:
     void set_parent(TeslaBLEVehicle *parent) { parent_ = parent; }
     void set_initial_option(const std::string &option) { initial_option_ = option; }
+    const std::string &get_initial_option() const { return initial_option_; }
 protected:
     void control(const std::string &value) override;
     TeslaBLEVehicle *parent_{nullptr};

@@ -64,10 +64,10 @@ void TeslaBLEVehicle::setup() {
   if (polling_mode_select_) {
     // Publish initial state
     auto *sel = static_cast<TeslaPollingModeSelect*>(polling_mode_select_);
-    polling_mode_select_->publish_state(sel->initial_option_);
-    current_polling_mode_ = parse_polling_mode_(sel->initial_option_);
+    polling_mode_select_->publish_state(sel->get_initial_option());
+    current_polling_mode_ = parse_polling_mode_(sel->get_initial_option());
     polling_interval_ms_ = get_polling_interval_ms_(current_polling_mode_);
-    ESP_LOGI(TAG, "Polling mode initialized to: %s", sel->initial_option_.c_str());
+    ESP_LOGI(TAG, "Polling mode initialized to: %s", sel->get_initial_option().c_str());
   }
 }
 
