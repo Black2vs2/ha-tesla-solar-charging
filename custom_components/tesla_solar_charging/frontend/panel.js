@@ -476,14 +476,45 @@ class TeslaSolarChargingPanel extends HTMLElement {
 
       if (atLimit) {
         html += `<div style="font-size:12px" class="c-green">At charge limit</div>`;
-      } else if (kwhNeeded != null) {
+      } else if (kwhNeeded != null && parseFloat(kwhNeeded) > 0) {
         html += `<div class="tsc-big-sub">Needs ${kwhNeeded} kWh to reach ${limit}%</div>`;
-      }
 
-      const teslaEta = stateAttrs.tesla_eta_min;
-      if (teslaEta != null) {
-        const hrs = (teslaEta / 60).toFixed(1);
-        html += this._metric("ETA", `${hrs}h (${teslaEta} min)`);
+        // Charge time estimates
+        const kwhNeed = parseFloat(kwhNeeded);
+        const currentAmps = parseFloat(this._val("sensor.charging_amps")) || 0;
+        const gridV = stateAttrs.grid_voltage_v || 230;
+        const maxAmps = stateAttrs.max_charging_amps ?? 28;
+        const efficiency = 0.9; // AC charging efficiency
+
+        // If actively charging, show ETA at current rate
+        const teslaEta = stateAttrs.tesla_eta_min;
+        if (teslaEta != null) {
+          const hrs = (teslaEta / 60).toFixed(1);
+          html += this._metric("ETA (current)", `<b>${hrs}h</b>`);
+        } else if (currentAmps > 0) {
+          const powerKw = (currentAmps * gridV * efficiency) / 1000;
+          const hrs = (kwhNeed / powerKw).toFixed(1);
+          html += this._metric("ETA (current)", `<b>${hrs}h</b> at ${currentAmps}A`);
+        }
+
+        // Always show ETA at max amps
+        const maxPowerKw = (maxAmps * gridV * efficiency) / 1000;
+        const maxHrs = (kwhNeed / maxPowerKw).toFixed(1);
+        html += this._metric(`ETA (${maxAmps}A max)`, `${maxHrs}h`);
+
+        // Show ETA at min amps (5A) for worst case
+        const minPowerKw = (5 * gridV * efficiency) / 1000;
+        const minHrs = (kwhNeed / minPowerKw).toFixed(1);
+        html += this._metric("ETA (5A min)", `${minHrs}h`);
+
+        // Today's excess estimate
+        const outlook = stateAttrs.multi_day_outlook ?? forecastAttrs.multi_day_outlook;
+        const todayExcess = outlook?.daily_forecasts?.[0]?.excess_kwh;
+        if (todayExcess != null && todayExcess > 0) {
+          const pctFromExcess = Math.min((todayExcess * efficiency / (stateAttrs.tesla_battery_kwh ?? 75)) * 100, kwhNeed / (stateAttrs.tesla_battery_kwh ?? 75) * 100).toFixed(0);
+          const socAfter = teslaSoc != null ? Math.min(limit, teslaSoc + parseFloat(pctFromExcess)).toFixed(0) : "?";
+          html += this._metric("Today's excess", `~${todayExcess.toFixed(0)} kWh → ${socAfter}%`);
+        }
       }
 
       const chargePower = stateAttrs.tesla_charge_power_w;
@@ -590,25 +621,22 @@ class TeslaSolarChargingPanel extends HTMLElement {
         const maxProd = Math.max(...dailyForecasts.map(d => d.production_kwh || 0), 1);
         const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+        const maxExcess = Math.max(...dailyForecasts.map(d => d.excess_kwh || 0), 1);
+
         let html = "";
         for (const day of dailyForecasts) {
           const d = new Date(day.date + "T00:00:00");
           const label = dayNames[d.getDay()];
-          const prod = day.production_kwh || 0;
           const excess = day.excess_kwh || 0;
-          const pct = (prod / maxProd) * 100;
-          const excessPct = (excess / maxProd) * 100;
+          const pct = (excess / maxExcess) * 100;
           const barColor = excess <= 0 ? "#ef5350" : excess < 10 ? "#ff9800" : "#4caf50";
 
           html += `<div class="tsc-outlook-day">
             <span class="tsc-outlook-label">${label}</span>
             <div class="tsc-outlook-bar">
-              <div class="tsc-outlook-fill" style="width:${pct}%;background:${barColor};opacity:0.3"></div>
+              <div class="tsc-outlook-fill" style="width:${pct}%;background:${barColor}"></div>
             </div>
-            <div class="tsc-outlook-bar" style="margin-left:-100%">
-              <div class="tsc-outlook-fill" style="width:${excessPct}%;background:${barColor}"></div>
-            </div>
-            <span class="tsc-outlook-val">${excess > 0 ? `+${excess.toFixed(0)}` : "0"} kWh</span>
+            <span class="tsc-outlook-val" style="color:${barColor}">${excess > 0 ? `+${excess.toFixed(0)}` : "0"} kWh</span>
           </div>`;
         }
 
