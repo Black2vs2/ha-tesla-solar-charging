@@ -16,37 +16,9 @@ class TeslaSolarChargingPanel extends HTMLElement {
     this._config = panel.config || {};
   }
 
-  _getState(suffix) {
-    // Try common entity ID patterns
-    const candidates = [
-      `sensor.${suffix}`,
-      `switch.${suffix}`,
-      `number.${suffix}`,
-      `device_tracker.${suffix}`,
-    ];
-    for (const id of candidates) {
-      const s = this._hass.states[id];
-      if (s) return s;
-    }
-    return null;
-  }
-
   _val(entityId) {
     const s = this._hass.states[entityId];
     return s ? s.state : "N/A";
-  }
-
-  _attr(entityId, attr) {
-    const s = this._hass.states[entityId];
-    if (!s || !s.attributes) return null;
-    return s.attributes[attr];
-  }
-
-  _numAttr(entityId, attr) {
-    const v = this._attr(entityId, attr);
-    if (v == null) return "N/A";
-    if (typeof v === "number") return v;
-    return v;
   }
 
   _render() {
@@ -54,128 +26,208 @@ class TeslaSolarChargingPanel extends HTMLElement {
       <style>
         :host { display: block; }
         .tsc-wrap {
-          max-width: 1100px;
+          max-width: 900px;
           margin: 0 auto;
           padding: 16px;
           font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif);
           color: var(--primary-text-color, #333);
         }
-        .tsc-header {
+
+        /* Hero banner */
+        .tsc-hero {
+          border-radius: 16px;
+          padding: 20px 24px;
+          margin-bottom: 16px;
           display: flex;
           align-items: center;
-          gap: 12px;
-          margin-bottom: 24px;
+          gap: 16px;
         }
-        .tsc-header h1 {
-          margin: 0;
-          font-size: 24px;
-          font-weight: 500;
+        .tsc-hero-icon {
+          font-size: 36px;
+          line-height: 1;
         }
-        .tsc-header .version {
-          font-size: 12px;
-          opacity: 0.6;
-          background: var(--secondary-background-color, #f5f5f5);
-          padding: 2px 8px;
-          border-radius: 8px;
+        .tsc-hero-text { flex: 1; }
+        .tsc-hero-state {
+          font-size: 22px;
+          font-weight: 600;
+          margin-bottom: 2px;
         }
+        .tsc-hero-reason {
+          font-size: 13px;
+          opacity: 0.85;
+        }
+        .tsc-hero-badges {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .tsc-hero.idle     { background: var(--card-background-color, #fff); border: 2px solid var(--divider-color, #ddd); }
+        .tsc-hero.waiting   { background: #fff3e0; border: 2px solid #ffb74d; }
+        .tsc-hero.charging  { background: #e8f5e9; border: 2px solid #66bb6a; }
+        .tsc-hero.night     { background: #e3f2fd; border: 2px solid #42a5f5; }
+        .tsc-hero.error     { background: #ffebee; border: 2px solid #ef5350; }
+        .tsc-hero.planned   { background: #f3e5f5; border: 2px solid #ab47bc; }
+
+        /* Grid */
         .tsc-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-          gap: 16px;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
         }
         .tsc-card {
           background: var(--card-background-color, #fff);
           border-radius: 12px;
           padding: 16px;
-          box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.1));
+          box-shadow: var(--ha-card-box-shadow, 0 2px 6px rgba(0,0,0,.08));
         }
+        .tsc-card.wide { grid-column: 1 / -1; }
+        .tsc-card.alert { border-left: 4px solid #ef5350; }
+        .tsc-card.highlight { border-left: 4px solid #ff9800; }
         .tsc-card h2 {
-          margin: 0 0 12px 0;
-          font-size: 14px;
-          font-weight: 500;
+          margin: 0 0 10px 0;
+          font-size: 12px;
+          font-weight: 600;
           text-transform: uppercase;
-          opacity: 0.6;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.8px;
+          opacity: 0.5;
         }
-        .tsc-row {
+
+        /* Metric rows */
+        .tsc-metric {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 6px 0;
-          border-bottom: 1px solid var(--divider-color, #eee);
+          padding: 5px 0;
         }
-        .tsc-row:last-child { border-bottom: none; }
-        .tsc-label {
+        .tsc-metric + .tsc-metric {
+          border-top: 1px solid var(--divider-color, rgba(0,0,0,.06));
+        }
+        .tsc-metric-label {
           font-size: 13px;
-          opacity: 0.8;
+          opacity: 0.7;
         }
-        .tsc-value {
-          font-size: 14px;
-          font-weight: 500;
+        .tsc-metric-value {
+          font-size: 15px;
+          font-weight: 600;
           text-align: right;
         }
-        .tsc-badge {
-          display: inline-block;
-          padding: 2px 10px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 600;
+
+        /* Big number */
+        .tsc-big {
+          font-size: 28px;
+          font-weight: 700;
+          line-height: 1.1;
         }
-        .tsc-badge.green { background: #c8e6c9; color: #2e7d32; }
-        .tsc-badge.orange { background: #ffe0b2; color: #e65100; }
-        .tsc-badge.red { background: #ffcdd2; color: #c62828; }
-        .tsc-badge.blue { background: #bbdefb; color: #1565c0; }
-        .tsc-badge.grey { background: var(--secondary-background-color, #eee); color: var(--primary-text-color, #666); }
+        .tsc-big-unit {
+          font-size: 14px;
+          font-weight: 400;
+          opacity: 0.6;
+        }
+        .tsc-big-sub {
+          font-size: 12px;
+          font-weight: 400;
+          opacity: 0.6;
+          margin-top: 2px;
+        }
+
+        /* Progress bar */
         .tsc-progress {
           width: 100%;
-          height: 6px;
+          height: 8px;
           background: var(--secondary-background-color, #eee);
-          border-radius: 3px;
-          margin: 4px 0;
+          border-radius: 4px;
+          margin: 6px 0;
           overflow: hidden;
         }
         .tsc-progress-bar {
           height: 100%;
-          border-radius: 3px;
+          border-radius: 4px;
           transition: width 0.5s ease;
         }
-        .tsc-source-row {
+
+        /* Badge */
+        .tsc-tag {
+          display: inline-block;
+          padding: 3px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .tsc-tag.green  { background: #c8e6c9; color: #2e7d32; }
+        .tsc-tag.orange { background: #ffe0b2; color: #e65100; }
+        .tsc-tag.red    { background: #ffcdd2; color: #c62828; }
+        .tsc-tag.blue   { background: #bbdefb; color: #1565c0; }
+        .tsc-tag.grey   { background: var(--secondary-background-color, #eee); color: var(--primary-text-color, #666); }
+        .tsc-tag.purple { background: #e1bee7; color: #6a1b9a; }
+
+        /* Outlook bars */
+        .tsc-outlook-day {
           display: flex;
+          align-items: center;
           gap: 8px;
-          align-items: center;
-          padding: 4px 0;
-          font-size: 13px;
-        }
-        .tsc-source-name {
-          min-width: 100px;
-          font-weight: 500;
-        }
-        .tsc-source-val { opacity: 0.8; }
-        .tsc-accuracy-row {
-          display: flex;
-          gap: 4px;
-          align-items: center;
-          padding: 2px 0;
+          padding: 3px 0;
           font-size: 12px;
         }
-        .tsc-bar-wrap {
+        .tsc-outlook-label { min-width: 36px; font-weight: 500; }
+        .tsc-outlook-bar {
           flex: 1;
+          height: 6px;
+          background: var(--secondary-background-color, #eee);
+          border-radius: 3px;
+          overflow: hidden;
+        }
+        .tsc-outlook-fill {
+          height: 100%;
+          border-radius: 3px;
+        }
+        .tsc-outlook-val { min-width: 50px; text-align: right; opacity: 0.7; }
+
+        /* Accuracy bars */
+        .tsc-acc-row {
           display: flex;
           align-items: center;
           gap: 6px;
+          padding: 2px 0;
+          font-size: 12px;
         }
-        .tsc-bar {
+        .tsc-acc-date { min-width: 42px; opacity: 0.6; }
+        .tsc-acc-bar {
           flex: 1;
-          height: 4px;
+          height: 5px;
           background: var(--secondary-background-color, #eee);
           border-radius: 2px;
           overflow: hidden;
         }
-        .tsc-bar-fill {
-          height: 100%;
-          border-radius: 2px;
+        .tsc-acc-fill { height: 100%; border-radius: 2px; }
+        .tsc-acc-val { min-width: 30px; text-align: right; opacity: 0.7; }
+
+        /* Collapsible debug */
+        .tsc-toggle {
+          cursor: pointer;
+          user-select: none;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
-        .tsc-wide { grid-column: 1 / -1; }
+        .tsc-toggle-arrow {
+          transition: transform 0.2s;
+          font-size: 10px;
+        }
+        .tsc-toggle-arrow.open { transform: rotate(90deg); }
+        .tsc-collapsible {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s ease;
+        }
+        .tsc-collapsible.open { max-height: 2000px; }
+
+        /* Color utilities */
+        .c-green  { color: #2e7d32; }
+        .c-orange { color: #e65100; }
+        .c-red    { color: #c62828; }
+        .c-blue   { color: #1565c0; }
+
+        /* Advisor table */
         .tsc-advisor-table {
           width: 100%;
           border-collapse: collapse;
@@ -189,365 +241,418 @@ class TeslaSolarChargingPanel extends HTMLElement {
           font-weight: 600;
           opacity: 0.6;
           border-bottom: 1px solid var(--divider-color, #eee);
-          white-space: nowrap;
         }
         .tsc-advisor-table td {
           padding: 5px 8px;
           border-bottom: 1px solid var(--divider-color, #eee);
-          vertical-align: middle;
         }
         .tsc-advisor-table tr:last-child td { border-bottom: none; }
-        .tsc-advisor-summary {
-          margin-top: 10px;
-          font-size: 13px;
-          font-weight: 500;
-          opacity: 0.85;
-        }
+
         @media (max-width: 700px) {
           .tsc-grid { grid-template-columns: 1fr; }
-          .tsc-advisor-table { font-size: 11px; }
-          .tsc-advisor-table th, .tsc-advisor-table td { padding: 4px 4px; }
         }
       </style>
       <div class="tsc-wrap">
-        <div class="tsc-header">
-          <ha-icon icon="mdi:solar-power" style="--mdc-icon-size:28px;color:var(--primary-color)"></ha-icon>
-          <h1>Tesla Solar Charging</h1>
-          <span class="version" id="tsc-version"></span>
+        <!-- Hero status banner -->
+        <div class="tsc-hero idle" id="tsc-hero">
+          <div class="tsc-hero-text">
+            <div class="tsc-hero-state" id="hero-state">Loading...</div>
+            <div class="tsc-hero-reason" id="hero-reason"></div>
+          </div>
+          <div class="tsc-hero-badges" id="hero-badges"></div>
         </div>
+
         <div class="tsc-grid">
-          <!-- Status Card -->
-          <div class="tsc-card" id="card-status">
-            <h2>System Status</h2>
-            <div id="status-rows"></div>
-          </div>
-
-          <!-- Power Card -->
+          <!-- Live Power -->
           <div class="tsc-card" id="card-power">
-            <h2>Power & Charging</h2>
-            <div id="power-rows"></div>
+            <h2>Power</h2>
+            <div id="power-content"></div>
           </div>
 
-          <!-- Tesla Card -->
+          <!-- Tesla -->
           <div class="tsc-card" id="card-tesla">
             <h2>Tesla</h2>
-            <div id="tesla-rows"></div>
+            <div id="tesla-content"></div>
           </div>
 
-          <!-- BLE Card -->
-          <div class="tsc-card" id="card-ble">
-            <h2>BLE / ESP32</h2>
-            <div id="ble-rows"></div>
-          </div>
-
-          <!-- Forecast Card -->
+          <!-- Today's Forecast -->
           <div class="tsc-card" id="card-forecast">
-            <h2>Solar Forecast</h2>
-            <div id="forecast-rows"></div>
+            <h2>Today's Solar</h2>
+            <div id="forecast-content"></div>
           </div>
 
-          <!-- Forecast Accuracy Card -->
-          <div class="tsc-card" id="card-accuracy">
-            <h2>Forecast Accuracy</h2>
-            <div id="accuracy-rows"></div>
+          <!-- Today's Charging -->
+          <div class="tsc-card" id="card-today">
+            <h2>Today's Charging</h2>
+            <div id="today-content"></div>
           </div>
 
-          <!-- Config Card -->
-          <div class="tsc-card" id="card-config">
-            <h2>Configuration</h2>
-            <div id="config-rows"></div>
+          <!-- Week Outlook -->
+          <div class="tsc-card wide" id="card-outlook">
+            <h2>Week Outlook</h2>
+            <div id="outlook-content"></div>
           </div>
 
-          <!-- Daily Stats Card -->
-          <div class="tsc-card" id="card-daily">
-            <h2>Daily Stats</h2>
-            <div id="daily-rows"></div>
-          </div>
-
-          <!-- Advisor Debug Card -->
-          <div class="tsc-card tsc-wide" id="card-advisor">
-            <h2>Advisor Debug <button id="tsc-advisor-copy-btn" style="float:right;font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--secondary-background-color,#f5f5f5);cursor:pointer">Copy JSON</button></h2>
-            <div id="advisor-summary" class="tsc-advisor-summary"></div>
-            <div id="advisor-table-wrap" style="overflow-x:auto;margin-top:8px">
-              <table class="tsc-advisor-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Cost</th>
-                    <th>Reason</th>
-                    <th>Running</th>
-                    <th>Watts</th>
-                    <th>Deadline</th>
-                    <th>Latest Start</th>
-                  </tr>
-                </thead>
-                <tbody id="advisor-tbody"></tbody>
-              </table>
+          <!-- Forecast Accuracy (collapsible) -->
+          <div class="tsc-card wide" id="card-accuracy">
+            <div class="tsc-toggle" id="acc-toggle">
+              <span class="tsc-toggle-arrow" id="acc-arrow">&#9654;</span>
+              <h2 style="margin:0">Forecast Accuracy</h2>
+            </div>
+            <div class="tsc-collapsible" id="acc-body">
+              <div id="accuracy-content" style="padding-top:10px"></div>
             </div>
           </div>
 
-          <!-- Debug Card -->
-          <div class="tsc-card tsc-wide" id="card-debug">
-            <h2>Debug JSON <button id="tsc-copy-btn" style="float:right;font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--secondary-background-color,#f5f5f5);cursor:pointer">Copy</button></h2>
-            <pre id="debug-json" style="font-size:11px;max-height:300px;overflow:auto;background:var(--secondary-background-color,#f5f5f5);padding:8px;border-radius:6px;white-space:pre-wrap;word-break:break-all"></pre>
+          <!-- Advisor -->
+          <div class="tsc-card wide" id="card-advisor" style="display:none">
+            <div class="tsc-toggle" id="adv-toggle">
+              <span class="tsc-toggle-arrow" id="adv-arrow">&#9654;</span>
+              <h2 style="margin:0">Appliance Advisor</h2>
+            </div>
+            <div class="tsc-collapsible" id="adv-body">
+              <div id="advisor-content" style="padding-top:10px"></div>
+            </div>
+          </div>
+
+          <!-- Debug (collapsible) -->
+          <div class="tsc-card wide">
+            <div class="tsc-toggle" id="debug-toggle">
+              <span class="tsc-toggle-arrow" id="debug-arrow">&#9654;</span>
+              <h2 style="margin:0">Debug</h2>
+              <button id="tsc-copy-btn" style="margin-left:auto;font-size:11px;padding:3px 10px;border-radius:6px;border:1px solid var(--divider-color,#ccc);background:var(--secondary-background-color,#f5f5f5);cursor:pointer">Copy JSON</button>
+            </div>
+            <div class="tsc-collapsible" id="debug-body">
+              <pre id="debug-json" style="font-size:11px;max-height:300px;overflow:auto;background:var(--secondary-background-color,#f5f5f5);padding:8px;border-radius:6px;white-space:pre-wrap;word-break:break-all;margin-top:10px"></pre>
+            </div>
           </div>
         </div>
       </div>
     `;
-    // Copy button handler (main debug)
-    this.querySelector("#tsc-copy-btn")?.addEventListener("click", () => {
+
+    // Toggle handlers
+    const toggles = [
+      ["acc-toggle", "acc-body", "acc-arrow"],
+      ["adv-toggle", "adv-body", "adv-arrow"],
+      ["debug-toggle", "debug-body", "debug-arrow"],
+    ];
+    for (const [togId, bodyId, arrowId] of toggles) {
+      this.querySelector(`#${togId}`)?.addEventListener("click", () => {
+        const body = this.querySelector(`#${bodyId}`);
+        const arrow = this.querySelector(`#${arrowId}`);
+        if (body && arrow) {
+          body.classList.toggle("open");
+          arrow.classList.toggle("open");
+        }
+      });
+    }
+
+    // Copy JSON
+    this.querySelector("#tsc-copy-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
       const json = this.querySelector("#debug-json")?.textContent || "";
       navigator.clipboard.writeText(json).then(() => {
         const btn = this.querySelector("#tsc-copy-btn");
-        if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy", 2000); }
-      });
-    });
-    // Copy button handler (advisor debug)
-    this.querySelector("#tsc-advisor-copy-btn")?.addEventListener("click", () => {
-      const s = this._hass?.states["sensor.tesla_solar_charging_appliance_advisor_summary"];
-      const payload = s ? JSON.stringify({ state: s.state, attributes: s.attributes }, null, 2) : "{}";
-      navigator.clipboard.writeText(payload).then(() => {
-        const btn = this.querySelector("#tsc-advisor-copy-btn");
         if (btn) { btn.textContent = "Copied!"; setTimeout(() => btn.textContent = "Copy JSON", 2000); }
       });
     });
   }
 
-  _stateBadge(state) {
-    const map = {
-      charging_solar: ["green", "Charging (Solar)"],
-      charging_night: ["blue", "Charging (Night)"],
-      waiting: ["orange", "Waiting"],
-      stopped: ["grey", "Stopped"],
-      idle: ["grey", "Idle"],
-      error: ["red", "Error"],
-      planned_solar: ["green", "Planned Solar"],
-      planned_night: ["blue", "Planned Night"],
-    };
-    const [cls, label] = map[state] || ["grey", state || "Unknown"];
-    return `<span class="tsc-badge ${cls}">${label}</span>`;
-  }
-
-  _row(label, value) {
-    return `<div class="tsc-row"><span class="tsc-label">${label}</span><span class="tsc-value">${value}</span></div>`;
-  }
-
-  _progressBar(pct, color) {
-    const p = Math.max(0, Math.min(100, pct || 0));
-    return `<div class="tsc-progress"><div class="tsc-progress-bar" style="width:${p}%;background:${color}"></div></div>`;
+  _metric(label, value, cls) {
+    const extra = cls ? ` class="${cls}"` : "";
+    return `<div class="tsc-metric"><span class="tsc-metric-label">${label}</span><span class="tsc-metric-value"${extra}>${value}</span></div>`;
   }
 
   _update() {
     if (!this._hass) return;
 
-    const state = this._val("sensor.state");
+    const stateVal = this._val("sensor.state");
     const stateAttrs = this._hass.states["sensor.state"]?.attributes || {};
     const reason = this._val("sensor.reason");
     const forecastAttrs = this._hass.states["sensor.solar_forecast"]?.attributes || {};
-    const bleAttrs = this._hass.states["sensor.ble_status"]?.attributes || {};
     const accuracyAttrs = this._hass.states["sensor.forecast_accuracy"]?.attributes || {};
-    const cloudAttrs = this._hass.states["sensor.cloud_strategy"]?.attributes || {};
-    const netAttrs = this._hass.states["sensor.net_available"]?.attributes || {};
+    const bleAttrs = this._hass.states["sensor.ble_status"]?.attributes || {};
 
-    // Version
-    const ver = this.querySelector("#tsc-version");
-    if (ver) ver.textContent = `v${stateAttrs.version || ""}`;
+    // ── Hero Banner ──
+    const hero = this.querySelector("#tsc-hero");
+    const heroState = this.querySelector("#hero-state");
+    const heroReason = this.querySelector("#hero-reason");
+    const heroBadges = this.querySelector("#hero-badges");
 
-    // Status
-    const statusEl = this.querySelector("#status-rows");
-    if (statusEl) {
-      const enabled = stateAttrs.enabled;
-      const force = stateAttrs.force_charge;
-      const night = stateAttrs.night_mode_active;
-      statusEl.innerHTML = [
-        this._row("State", this._stateBadge(state)),
-        this._row("Reason", `<span style="font-size:12px">${reason}</span>`),
-        this._row("Enabled", enabled ? '<span class="tsc-badge green">ON</span>' : '<span class="tsc-badge grey">OFF</span>'),
-        this._row("Force Charge", force ? '<span class="tsc-badge orange">ON</span>' : '<span class="tsc-badge grey">OFF</span>'),
-        this._row("Night Mode", night ? '<span class="tsc-badge blue">Active</span>' : '<span class="tsc-badge grey">Inactive</span>'),
-        this._row("Night Planned", stateAttrs.night_charge_planned ? '<span class="tsc-badge blue">Yes</span>' : '<span class="tsc-badge grey">No</span>'),
-        this._row("Cloud Strategy", this._val("sensor.cloud_strategy") + (cloudAttrs.best_charging_window ? ` (${cloudAttrs.best_charging_window})` : "")),
-      ].join("");
+    if (hero) {
+      const stateMap = {
+        charging_solar: ["charging", "Charging (Solar)", "mdi:solar-power"],
+        charging_night: ["night", "Charging (Night)", "mdi:weather-night"],
+        waiting: ["waiting", "Waiting", "mdi:clock-outline"],
+        stopped: ["idle", "Stopped", "mdi:stop-circle-outline"],
+        idle: ["idle", "Idle", "mdi:sleep"],
+        error: ["error", "Error", "mdi:alert-circle"],
+        planned_solar: ["planned", "Solar Planned", "mdi:calendar-check"],
+        planned_night: ["planned", "Night Planned", "mdi:calendar-check"],
+      };
+      const [cls, label] = stateMap[stateVal] || ["idle", stateVal || "Unknown"];
+      hero.className = `tsc-hero ${cls}`;
+      if (heroState) heroState.textContent = label;
+      if (heroReason) heroReason.textContent = reason !== "N/A" ? reason : "";
+
+      // Badges for active flags
+      let badges = "";
+      if (stateAttrs.force_charge) badges += `<span class="tsc-tag orange">Force Charge</span>`;
+      if (stateAttrs.night_mode_active) badges += `<span class="tsc-tag blue">Night Mode</span>`;
+      if (stateAttrs.night_charge_planned) badges += `<span class="tsc-tag purple">Night Planned</span>`;
+
+      const bleState = this._val("sensor.ble_status");
+      if (bleState !== "ok" && bleState !== "N/A") {
+        badges += `<span class="tsc-tag red">BLE: ${bleState}</span>`;
+      }
+      if (!stateAttrs.enabled) badges += `<span class="tsc-tag grey">Disabled</span>`;
+      if (heroBadges) heroBadges.innerHTML = badges;
     }
 
-    // Power
-    const powerEl = this.querySelector("#power-rows");
+    // ── Power Card ──
+    const powerEl = this.querySelector("#power-content");
     if (powerEl) {
       const gridW = stateAttrs.grid_power_w;
-      const gridV = stateAttrs.grid_voltage_v;
       const batSoc = stateAttrs.battery_soc;
-      const batThresh = stateAttrs.battery_soc_threshold;
+      const batThresh = stateAttrs.battery_soc_threshold ?? 98;
       const batPower = stateAttrs.battery_power_w;
       const amps = this._val("sensor.charging_amps");
       const netA = this._val("sensor.net_available");
 
       const exporting = gridW != null && gridW < 0;
-      const gridLabel = exporting ? `${Math.abs(gridW)}W exporting` : `${gridW}W importing`;
-      const gridColor = exporting ? "#4caf50" : "#f44336";
+      const gridText = gridW != null
+        ? (exporting ? `${Math.abs(gridW).toFixed(0)}W` : `${Math.round(gridW)}W`)
+        : "N/A";
+      const gridLabel = exporting ? "Exporting" : "Importing";
+      const gridColor = exporting ? "c-green" : "c-red";
 
-      powerEl.innerHTML = [
-        this._row("Grid Power", `<span style="color:${gridColor};font-weight:600">${gridLabel}</span>`),
-        this._row("Grid Voltage", `${gridV ?? "N/A"}V`),
-        this._row("Home Battery", `${batSoc ?? "N/A"}% / ${batThresh ?? 98}% threshold`),
-        this._progressBar(batSoc, batSoc >= batThresh ? "#4caf50" : "#ff9800"),
-        batSoc != null && batThresh != null && batSoc < batThresh
-          ? this._row("", `<span style="font-size:11px;color:#e65100">Waiting for battery to reach ${batThresh}% (currently ${batSoc}%)</span>`)
-          : "",
-        this._row("Battery Power", `${batPower ?? "N/A"}W ${batPower > 0 ? "(discharging)" : batPower < 0 ? "(charging)" : ""}`),
-        stateAttrs.home_battery_eta_min != null
-          ? this._row("Home Battery Full In", `~${stateAttrs.home_battery_eta_min} min`)
-          : "",
-        this._row("Charging Amps", `<b>${amps}A</b>`),
-        this._row("Net Available", `${netA}A`),
-        netAttrs.grid_export_amps != null
-          ? this._row("", `<span style="font-size:11px;opacity:0.7">export ${netAttrs.grid_export_amps}A - buffer ${netAttrs.safety_buffer_amps}A - bat discharge ${netAttrs.battery_discharge_amps}A</span>`)
-          : "",
-      ].join("");
+      const batColor = batSoc >= batThresh ? "#4caf50" : batSoc >= 80 ? "#ff9800" : "#f44336";
+      const batBlocking = batSoc < batThresh;
+
+      let html = this._metric(gridLabel, `<span class="${gridColor}">${gridText}</span>`);
+      html += this._metric("Home Battery", `${batSoc ?? "N/A"}%`);
+      html += `<div class="tsc-progress"><div class="tsc-progress-bar" style="width:${batSoc || 0}%;background:${batColor}"></div></div>`;
+      if (batBlocking && batSoc != null) {
+        html += `<div style="font-size:11px;color:#e65100;padding:2px 0">Filling to ${batThresh}% before car charges</div>`;
+      }
+      if (batPower != null) {
+        const batDir = batPower > 0 ? "discharging" : batPower < 0 ? "charging" : "idle";
+        html += this._metric("Battery", `${Math.abs(batPower).toFixed(0)}W ${batDir}`);
+      }
+      html += this._metric("Charging", `<span class="${parseFloat(amps) > 0 ? "c-green" : ""}" style="font-size:18px;font-weight:700">${amps}A</span>`);
+      html += this._metric("Available", `${netA}A`);
+
+      // Add card highlight if battery is blocking
+      const card = this.querySelector("#card-power");
+      if (card) card.className = `tsc-card${batBlocking ? " highlight" : ""}`;
+
+      powerEl.innerHTML = html;
     }
 
-    // Tesla
-    const teslaEl = this.querySelector("#tesla-rows");
+    // ── Tesla Card ──
+    const teslaEl = this.querySelector("#tesla-content");
     if (teslaEl) {
-      const limit = this._val("number.tesla_charge_limit");
-      // Try to find tesla battery sensor
-      let teslaSoc = "N/A";
+      const limit = parseFloat(this._val("number.tesla_charge_limit")) || 0;
+      let teslaSoc = null;
       for (const [id, s] of Object.entries(this._hass.states)) {
         if (id.includes("tesla") && id.includes("battery") && id.startsWith("sensor.") && !id.includes("power")) {
-          teslaSoc = s.state;
+          teslaSoc = parseFloat(s.state);
           break;
         }
       }
-      // Try to find location tracker
-      let location = "N/A";
+
+      const pct = teslaSoc ?? 0;
+      const atLimit = teslaSoc != null && limit > 0 && teslaSoc >= limit;
+      const barColor = atLimit ? "#4caf50" : "#2196f3";
+      const kwhNeeded = limit > 0 && teslaSoc != null
+        ? ((limit - teslaSoc) / 100 * (stateAttrs.tesla_battery_kwh ?? 75)).toFixed(1)
+        : null;
+
+      let html = `<div style="display:flex;align-items:baseline;gap:8px">`;
+      html += `<span class="tsc-big">${teslaSoc != null ? teslaSoc : "?"}<span class="tsc-big-unit">%</span></span>`;
+      html += `<span style="font-size:13px;opacity:0.5">/ ${limit || "?"}%</span>`;
+      html += `</div>`;
+      html += `<div class="tsc-progress"><div class="tsc-progress-bar" style="width:${pct}%;background:${barColor}"></div></div>`;
+
+      if (atLimit) {
+        html += `<div style="font-size:12px" class="c-green">At charge limit</div>`;
+      } else if (kwhNeeded != null) {
+        html += `<div class="tsc-big-sub">Needs ${kwhNeeded} kWh to reach ${limit}%</div>`;
+      }
+
+      const teslaEta = stateAttrs.tesla_eta_min;
+      if (teslaEta != null) {
+        const hrs = (teslaEta / 60).toFixed(1);
+        html += this._metric("ETA", `${hrs}h (${teslaEta} min)`);
+      }
+
+      const chargePower = stateAttrs.tesla_charge_power_w;
+      if (chargePower != null && chargePower > 0) {
+        html += this._metric("Power", `<span class="c-green">${chargePower}W</span>`);
+      }
+
+      // Location
+      let location = null;
       for (const [id, s] of Object.entries(this._hass.states)) {
         if (id.includes("tesla") && id.startsWith("device_tracker.")) {
           location = s.state;
           break;
         }
       }
+      if (location && location !== "home" && location !== "Piano di sotto") {
+        html += this._metric("Location", `<span class="c-orange">${location}</span>`);
+      }
 
-      const teslaEta = stateAttrs.tesla_eta_min;
-      teslaEl.innerHTML = [
-        this._row("Battery SOC", `${teslaSoc}%`),
-        this._row("Charge Limit", `${limit}%`),
-        teslaSoc !== "N/A" && limit !== "N/A"
-          ? this._progressBar(parseFloat(teslaSoc), parseFloat(teslaSoc) >= parseFloat(limit) ? "#4caf50" : "#2196f3")
-          : "",
-        teslaEta != null
-          ? this._row("Charged In", `~${teslaEta} min (${Math.round(teslaEta/60*10)/10}h)`)
-          : "",
-        this._row("Charge Power", `${stateAttrs.tesla_charge_power_w ?? 0}W`),
-        this._row("Location", location),
-      ].join("");
+      teslaEl.innerHTML = html;
     }
 
-    // BLE
-    const bleEl = this.querySelector("#ble-rows");
-    if (bleEl) {
-      const bleState = this._val("sensor.ble_status");
-      const bleColor = bleState === "ok" ? "green" : bleState === "esp32_offline" ? "red" : "orange";
-      bleEl.innerHTML = [
-        this._row("Status", `<span class="tsc-badge ${bleColor}">${bleState}</span>`),
-        this._row("Detail", bleAttrs.detail || "None"),
-        this._row("Failures", bleAttrs.consecutive_failures ?? 0),
-        this._row("Charger Switch", `<code style="font-size:11px">${bleAttrs.charger_switch || "N/A"}</code>`),
-        this._row("Amps Entity", `<code style="font-size:11px">${bleAttrs.charging_amps || "N/A"}</code>`),
-        this._row("Wake Button", `<code style="font-size:11px">${bleAttrs.wake_button || "N/A"}</code>`),
-      ].join("");
-    }
-
-    // Forecast
-    const forecastEl = this.querySelector("#forecast-rows");
+    // ── Today's Forecast ──
+    const forecastEl = this.querySelector("#forecast-content");
     if (forecastEl) {
       const blended = forecastAttrs.blended_kwh ?? this._val("sensor.solar_forecast");
       const pessimistic = forecastAttrs.pessimistic_kwh;
       const sources = forecastAttrs.sources || [];
-      const corrFactor = forecastAttrs.correction_factor;
-      const seasonalFactor = forecastAttrs.seasonal_correction_factor;
+      const cloudStrategy = this._val("sensor.cloud_strategy");
+      const cloudAttrs = this._hass.states["sensor.cloud_strategy"]?.attributes || {};
+      const bestWindow = cloudAttrs.best_charging_window;
 
-      let html = [
-        this._row("Blended Forecast", `<b>${blended} kWh</b>`),
-        this._row("Pessimistic", `${pessimistic ?? "N/A"} kWh`),
-        this._row("Correction Factor", corrFactor ?? "N/A"),
-        this._row("Seasonal Factor", seasonalFactor ?? "N/A"),
-      ].join("");
-
-      if (sources.length > 0) {
-        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color,#eee)">`;
-        html += `<div style="font-size:12px;opacity:0.6;margin-bottom:4px">SOURCES</div>`;
-        for (const src of sources) {
-          const pess = src.pessimistic_kwh ? ` (P10: ${src.pessimistic_kwh})` : "";
-          html += `<div class="tsc-source-row">
-            <span class="tsc-source-name">${src.name}</span>
-            <span class="tsc-source-val">${src.production_kwh} kWh${pess}</span>
-            <span style="font-size:11px;opacity:0.5">w:${src.weight}</span>
-          </div>`;
-        }
-        html += `</div>`;
-      } else {
-        html += this._row("Sources", '<span style="opacity:0.5">No forecast data yet (updates after HA start)</span>');
+      let html = `<div class="tsc-big">${blended}<span class="tsc-big-unit"> kWh</span></div>`;
+      if (pessimistic) {
+        html += `<div class="tsc-big-sub">Pessimistic: ${pessimistic} kWh</div>`;
       }
 
-      // PVGIS baselines
-      const pvgis = forecastAttrs.pvgis_monthly_baselines;
-      if (pvgis) {
-        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color,#eee)">`;
-        html += `<div style="font-size:12px;opacity:0.6;margin-bottom:4px">PVGIS MONTHLY BASELINES (kWh/m\u00b2)</div>`;
-        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-        const maxVal = Math.max(...Object.values(pvgis));
-        for (const [m, val] of Object.entries(pvgis)) {
-          const pct = (val / maxVal) * 100;
-          html += `<div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:1px 0">
-            <span style="min-width:28px">${months[parseInt(m)-1]}</span>
-            <div style="flex:1;height:4px;background:var(--secondary-background-color,#eee);border-radius:2px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#ffb74d;border-radius:2px"></div></div>
-            <span style="min-width:40px;text-align:right">${Math.round(val)}</span>
-          </div>`;
-        }
+      if (cloudStrategy && cloudStrategy !== "N/A") {
+        const strategyTag = cloudStrategy.includes("clear") ? "green"
+          : cloudStrategy.includes("partly") ? "orange"
+          : cloudStrategy.includes("overcast") || cloudStrategy.includes("rain") ? "red"
+          : "grey";
+        html += `<div style="margin-top:8px">`;
+        html += `<span class="tsc-tag ${strategyTag}">${cloudStrategy}</span>`;
+        if (bestWindow) html += ` <span style="font-size:12px;opacity:0.6">Best: ${bestWindow}</span>`;
+        html += `</div>`;
+      }
+
+      if (sources.length > 0) {
+        html += `<div style="margin-top:10px;font-size:12px;opacity:0.5">`;
+        html += sources.map(s => `${s.name}: ${s.production_kwh}`).join(" &middot; ");
         html += `</div>`;
       }
 
       forecastEl.innerHTML = html;
     }
 
-    // Accuracy
-    const accEl = this.querySelector("#accuracy-rows");
+    // ── Today's Charging ──
+    const todayEl = this.querySelector("#today-content");
+    if (todayEl) {
+      const solarKwh = parseFloat(stateAttrs.daily_solar_kwh ?? 0);
+      const gridKwh = parseFloat(stateAttrs.daily_grid_kwh ?? 0);
+      const totalKwh = (solarKwh + gridKwh).toFixed(1);
+      const peakAmps = stateAttrs.daily_peak_amps ?? 0;
+      const chargeMin = stateAttrs.daily_charge_minutes ?? 0;
+
+      let html = `<div class="tsc-big">${totalKwh}<span class="tsc-big-unit"> kWh</span></div>`;
+      html += `<div class="tsc-big-sub">charged today</div>`;
+
+      if (solarKwh > 0 || gridKwh > 0) {
+        html += `<div style="margin-top:8px">`;
+        if (solarKwh > 0) html += `<span class="tsc-tag green">Solar: ${solarKwh.toFixed(1)}</span> `;
+        if (gridKwh > 0) html += `<span class="tsc-tag blue">Grid: ${gridKwh.toFixed(1)}</span>`;
+        html += `</div>`;
+      }
+
+      if (peakAmps > 0) html += this._metric("Peak", `${peakAmps}A`);
+      if (chargeMin > 0) {
+        const hrs = (chargeMin / 60).toFixed(1);
+        html += this._metric("Time", chargeMin >= 60 ? `${hrs}h` : `${Math.round(chargeMin)}min`);
+      }
+
+      const planState = this._hass.states["sensor.plan"];
+      if (planState && planState.state && planState.state !== "N/A" && planState.state !== "unknown") {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color,#eee)">`;
+        html += this._metric("Plan", planState.state);
+        html += `</div>`;
+      }
+
+      todayEl.innerHTML = html;
+    }
+
+    // ── Week Outlook ──
+    const outlookEl = this.querySelector("#outlook-content");
+    if (outlookEl) {
+      const outlook = stateAttrs.multi_day_outlook ?? forecastAttrs.multi_day_outlook;
+      const dailyForecasts = outlook?.daily_forecasts || [];
+      const kwhNeeded = outlook?.kwh_needed;
+      const totalExcess = outlook?.total_excess_kwh;
+
+      if (dailyForecasts.length === 0) {
+        outlookEl.innerHTML = `<div style="opacity:0.5;font-size:13px">No forecast data yet</div>`;
+      } else {
+        const maxProd = Math.max(...dailyForecasts.map(d => d.production_kwh || 0), 1);
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+        let html = "";
+        for (const day of dailyForecasts) {
+          const d = new Date(day.date + "T00:00:00");
+          const label = dayNames[d.getDay()];
+          const prod = day.production_kwh || 0;
+          const excess = day.excess_kwh || 0;
+          const pct = (prod / maxProd) * 100;
+          const excessPct = (excess / maxProd) * 100;
+          const barColor = excess <= 0 ? "#ef5350" : excess < 10 ? "#ff9800" : "#4caf50";
+
+          html += `<div class="tsc-outlook-day">
+            <span class="tsc-outlook-label">${label}</span>
+            <div class="tsc-outlook-bar">
+              <div class="tsc-outlook-fill" style="width:${pct}%;background:${barColor};opacity:0.3"></div>
+            </div>
+            <div class="tsc-outlook-bar" style="margin-left:-100%">
+              <div class="tsc-outlook-fill" style="width:${excessPct}%;background:${barColor}"></div>
+            </div>
+            <span class="tsc-outlook-val">${excess > 0 ? `+${excess.toFixed(0)}` : "0"} kWh</span>
+          </div>`;
+        }
+
+        if (kwhNeeded != null && totalExcess != null) {
+          const enough = totalExcess >= kwhNeeded;
+          html += `<div style="margin-top:8px;font-size:12px">`;
+          html += `Need <b>${kwhNeeded}</b> kWh &middot; Week excess <b class="${enough ? "c-green" : "c-red"}">${totalExcess}</b> kWh`;
+          html += enough
+            ? ` <span class="tsc-tag green" style="margin-left:4px">Enough</span>`
+            : ` <span class="tsc-tag red" style="margin-left:4px">Short</span>`;
+          html += `</div>`;
+        }
+
+        outlookEl.innerHTML = html;
+      }
+    }
+
+    // ── Forecast Accuracy ──
+    const accEl = this.querySelector("#accuracy-content");
     if (accEl) {
       const factor = this._val("sensor.forecast_accuracy");
       const days = accuracyAttrs.days_tracked ?? 0;
-      const avgF = accuracyAttrs.avg_forecast_kwh ?? 0;
-      const avgA = accuracyAttrs.avg_actual_kwh ?? 0;
       const last7 = accuracyAttrs.last_7_days || [];
 
-      let html = [
-        this._row("Correction Factor", `<b>${factor}</b>`),
-        this._row("Days Tracked", days),
-        this._row("Avg Forecast", `${avgF} kWh`),
-        this._row("Avg Actual", `${avgA} kWh`),
-      ].join("");
+      let html = this._metric("Correction Factor", `<b>${factor}</b>`);
+      html += this._metric("Days Tracked", days);
 
       if (last7.length > 0) {
-        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color,#eee)">`;
-        html += `<div style="font-size:12px;opacity:0.6;margin-bottom:4px">LAST 7 DAYS</div>`;
         const maxKwh = Math.max(...last7.map(d => Math.max(d.forecast || 0, d.actual || 0)), 1);
+        html += `<div style="margin-top:8px">`;
         for (const day of last7) {
           const fPct = ((day.forecast || 0) / maxKwh) * 100;
           const aPct = ((day.actual || 0) / maxKwh) * 100;
-          html += `<div class="tsc-accuracy-row">
-            <span style="min-width:70px">${day.date?.slice(5) || "?"}</span>
-            <div class="tsc-bar-wrap">
-              <div class="tsc-bar"><div class="tsc-bar-fill" style="width:${fPct}%;background:#90caf9"></div></div>
-              <span style="min-width:35px;text-align:right">${day.forecast}</span>
-            </div>
-            <div class="tsc-bar-wrap">
-              <div class="tsc-bar"><div class="tsc-bar-fill" style="width:${aPct}%;background:#a5d6a7"></div></div>
-              <span style="min-width:35px;text-align:right">${day.actual}</span>
-            </div>
+          html += `<div class="tsc-acc-row">
+            <span class="tsc-acc-date">${day.date?.slice(5) || "?"}</span>
+            <div class="tsc-acc-bar"><div class="tsc-acc-fill" style="width:${fPct}%;background:#90caf9"></div></div>
+            <span class="tsc-acc-val">${day.forecast}</span>
+            <div class="tsc-acc-bar"><div class="tsc-acc-fill" style="width:${aPct}%;background:#a5d6a7"></div></div>
+            <span class="tsc-acc-val">${day.actual}</span>
           </div>`;
         }
         html += `<div style="display:flex;gap:16px;font-size:11px;opacity:0.5;margin-top:4px">
-          <span><span style="display:inline-block;width:10px;height:10px;background:#90caf9;border-radius:2px"></span> Forecast</span>
-          <span><span style="display:inline-block;width:10px;height:10px;background:#a5d6a7;border-radius:2px"></span> Actual</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#90caf9;border-radius:2px"></span> Forecast</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#a5d6a7;border-radius:2px"></span> Actual</span>
         </div>`;
         html += `</div>`;
       }
@@ -555,79 +660,46 @@ class TeslaSolarChargingPanel extends HTMLElement {
       accEl.innerHTML = html;
     }
 
-    // Config
-    const cfgEl = this.querySelector("#config-rows");
-    if (cfgEl) {
-      cfgEl.innerHTML = [
-        this._row("Min Export Power", `${stateAttrs.min_export_power_w ?? "N/A"}W`),
-        this._row("Max Charging Amps", `${stateAttrs.max_charging_amps ?? "N/A"}A`),
-        this._row("Safety Buffer", `${stateAttrs.safety_buffer_amps ?? "N/A"}A`),
-        this._row("Battery SOC Threshold", `${stateAttrs.battery_soc_threshold ?? "N/A"}%`),
-        this._row("Battery Discharge Threshold", `${stateAttrs.battery_discharge_threshold_w ?? "N/A"}W`),
-        this._row("Low Amp Stop Count", stateAttrs.low_amp_stop_count ?? "N/A"),
-        this._row("Grid Power Limit", `${stateAttrs.grid_power_limit_w ?? "N/A"}W`),
-      ].join("");
-    }
-
-    // Daily
-    const dailyEl = this.querySelector("#daily-rows");
-    if (dailyEl) {
-      const solarKwh = stateAttrs.daily_solar_kwh ?? 0;
-      const gridKwh = stateAttrs.daily_grid_kwh ?? 0;
-      const totalKwh = (parseFloat(solarKwh) + parseFloat(gridKwh)).toFixed(1);
-      dailyEl.innerHTML = [
-        this._row("Solar Charged", `${solarKwh} kWh`),
-        this._row("Grid Charged", `${gridKwh} kWh`),
-        this._row("Total Charged", `<b>${totalKwh} kWh</b>`),
-        this._row("Peak Amps", `${stateAttrs.daily_peak_amps ?? 0}A`),
-        this._row("Charge Time", `${stateAttrs.daily_charge_minutes ?? 0} min`),
-        this._row("Plan", this._val("sensor.plan")),
-        this._row("Plan Detail", `<span style="font-size:11px">${this._hass.states["sensor.plan"]?.attributes?.detail || "No plan yet (runs at planning time)"}</span>`),
-      ].join("");
-    }
-
-    // Advisor Debug
+    // ── Advisor ──
     const advisorState = this._hass.states["sensor.tesla_solar_charging_appliance_advisor_summary"];
-    const advisorSummaryEl = this.querySelector("#advisor-summary");
-    const advisorTbody = this.querySelector("#advisor-tbody");
-    if (advisorSummaryEl) {
-      advisorSummaryEl.textContent = advisorState ? advisorState.state : "No advisor data";
-    }
-    if (advisorTbody) {
+    const advisorCard = this.querySelector("#card-advisor");
+    const advisorEl = this.querySelector("#advisor-content");
+    if (advisorCard && advisorEl) {
       const appliances = advisorState?.attributes?.appliances || [];
-      if (appliances.length === 0) {
-        advisorTbody.innerHTML = `<tr><td colspan="8" style="text-align:center;opacity:0.5;padding:12px">No appliance data available</td></tr>`;
-      } else {
+      if (appliances.length > 0) {
+        advisorCard.style.display = "";
         const statusColor = { free: "green", paid: "orange", skipped: "grey", running: "blue", error: "red" };
-        advisorTbody.innerHTML = appliances.map(a => {
+        let html = `<div style="font-size:13px;margin-bottom:8px">${advisorState?.state || ""}</div>`;
+        html += `<table class="tsc-advisor-table"><thead><tr>
+          <th>Name</th><th>Status</th><th>Reason</th>
+        </tr></thead><tbody>`;
+        for (const a of appliances) {
           const cls = statusColor[a.status] || "grey";
-          const badge = `<span class="tsc-badge ${cls}">${a.status ?? "?"}</span>`;
-          const running = a.running != null ? (a.running ? '<span class="tsc-badge blue">Yes</span>' : '<span class="tsc-badge grey">No</span>') : "N/A";
-          const cost = a.cost != null ? `${a.cost}` : "N/A";
-          const watts = a.watts != null ? `${a.watts}W` : "N/A";
-          const deadline = a.deadline ?? "—";
-          const latestStart = a.latest_start ?? "—";
-          const reason = `<span style="font-size:11px;opacity:0.8">${a.reason ?? ""}</span>`;
-          return `<tr>
+          html += `<tr>
             <td><b>${a.name ?? "?"}</b></td>
-            <td>${badge}</td>
-            <td>${cost}</td>
-            <td>${reason}</td>
-            <td>${running}</td>
-            <td>${watts}</td>
-            <td>${deadline}</td>
-            <td>${latestStart}</td>
+            <td><span class="tsc-tag ${cls}">${a.status ?? "?"}</span></td>
+            <td style="font-size:11px;opacity:0.8">${a.reason ?? ""}</td>
           </tr>`;
-        }).join("");
+        }
+        html += `</tbody></table>`;
+        advisorEl.innerHTML = html;
+      } else {
+        advisorCard.style.display = "none";
       }
     }
 
-    // Debug JSON
+    // ── Debug ──
     const debugEl = this.querySelector("#debug-json");
     if (debugEl) {
       const debugState = this._hass.states["sensor.debug"];
-      const debugJson = debugState?.attributes?.json || "{}";
-      debugEl.textContent = debugJson;
+      debugEl.textContent = debugState?.attributes?.json || "{}";
+    }
+
+    // ── Low solar warning ──
+    const lowWarn = stateAttrs.low_solar_warning;
+    const forecastCard = this.querySelector("#card-forecast");
+    if (forecastCard) {
+      forecastCard.className = `tsc-card${lowWarn ? " alert" : ""}`;
     }
   }
 
@@ -636,29 +708,12 @@ class TeslaSolarChargingPanel extends HTMLElement {
     const defaultConfig = {
       grid: { columns: 6, rows: 6, gap: 8 },
       cards: [
-        {
-          type: "solar", col: 1, row: 1, span_col: 2, span_row: 1,
-          forecast_entity: `${prefix}solar_forecast`,
-          state_entity: `${prefix}state`,
-        },
-        {
-          type: "grid", col: 3, row: 1, span_col: 2, span_row: 1,
-        },
-        {
-          type: "battery", col: 5, row: 1, span_col: 2, span_row: 2,
-        },
-        {
-          type: "tesla", col: 1, row: 2, span_col: 2, span_row: 2,
-          state_entity: `${prefix}state`,
-          amps_entity: `${prefix}charging_amps`,
-        },
-        {
-          type: "forecast", col: 1, row: 4, span_col: 4, span_row: 1,
-          forecast_entity: `${prefix}solar_forecast`,
-        },
-        {
-          type: "debug", col: 1, row: 5, span_col: 6, span_row: 2,
-        },
+        { type: "solar", col: 1, row: 1, span_col: 2, span_row: 1, forecast_entity: `${prefix}solar_forecast`, state_entity: `${prefix}state` },
+        { type: "grid", col: 3, row: 1, span_col: 2, span_row: 1 },
+        { type: "battery", col: 5, row: 1, span_col: 2, span_row: 2 },
+        { type: "tesla", col: 1, row: 2, span_col: 2, span_row: 2, state_entity: `${prefix}state`, amps_entity: `${prefix}charging_amps` },
+        { type: "forecast", col: 1, row: 4, span_col: 4, span_row: 1, forecast_entity: `${prefix}solar_forecast` },
+        { type: "debug", col: 1, row: 5, span_col: 6, span_row: 2 },
       ],
     };
 
