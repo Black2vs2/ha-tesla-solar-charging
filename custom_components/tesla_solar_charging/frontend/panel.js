@@ -1,6 +1,3 @@
-// Import the energy dashboard card component
-import "/tesla_solar_charging/energy-dashboard-card.js";
-
 class TeslaSolarChargingPanel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
@@ -9,16 +6,36 @@ class TeslaSolarChargingPanel extends HTMLElement {
       this._render();
     }
     this._update();
-    this._renderDashboard();
   }
 
   set panel(panel) {
     this._config = panel.config || {};
   }
 
+  // Resolve entity ID — tries full ID first, then with tesla_solar_charging_ prefix
+  _e(shortId) {
+    // Already a full entity ID
+    if (this._hass.states[shortId]) return shortId;
+    // Try adding prefix: sensor.state → sensor.tesla_solar_charging_state
+    const dot = shortId.indexOf(".");
+    if (dot > 0) {
+      const domain = shortId.slice(0, dot);
+      const name = shortId.slice(dot + 1);
+      const prefixed = `${domain}.tesla_solar_charging_${name}`;
+      if (this._hass.states[prefixed]) return prefixed;
+    }
+    return shortId;
+  }
+
   _val(entityId) {
-    const s = this._hass.states[entityId];
+    const resolved = this._e(entityId);
+    const s = this._hass.states[resolved];
     return s ? s.state : "N/A";
+  }
+
+  _states(entityId) {
+    const resolved = this._e(entityId);
+    return this._hass.states[resolved];
   }
 
   _render() {
@@ -367,11 +384,11 @@ class TeslaSolarChargingPanel extends HTMLElement {
     if (!this._hass) return;
 
     const stateVal = this._val("sensor.state");
-    const stateAttrs = this._hass.states["sensor.state"]?.attributes || {};
+    const stateAttrs = this._states("sensor.state")?.attributes || {};
     const reason = this._val("sensor.reason");
-    const forecastAttrs = this._hass.states["sensor.solar_forecast"]?.attributes || {};
-    const accuracyAttrs = this._hass.states["sensor.forecast_accuracy"]?.attributes || {};
-    const bleAttrs = this._hass.states["sensor.ble_status"]?.attributes || {};
+    const forecastAttrs = this._states("sensor.solar_forecast")?.attributes || {};
+    const accuracyAttrs = this._states("sensor.forecast_accuracy")?.attributes || {};
+    const bleAttrs = this._states("sensor.ble_status")?.attributes || {};
 
     // ── Hero Banner ──
     const hero = this.querySelector("#tsc-hero");
@@ -544,7 +561,7 @@ class TeslaSolarChargingPanel extends HTMLElement {
       const pessimistic = forecastAttrs.pessimistic_kwh;
       const sources = forecastAttrs.sources || [];
       const cloudStrategy = this._val("sensor.cloud_strategy");
-      const cloudAttrs = this._hass.states["sensor.cloud_strategy"]?.attributes || {};
+      const cloudAttrs = this._states("sensor.cloud_strategy")?.attributes || {};
       const bestWindow = cloudAttrs.best_charging_window;
 
       let html = `<div class="tsc-big">${blended}<span class="tsc-big-unit"> kWh</span></div>`;
@@ -597,7 +614,7 @@ class TeslaSolarChargingPanel extends HTMLElement {
         html += this._metric("Time", chargeMin >= 60 ? `${hrs}h` : `${Math.round(chargeMin)}min`);
       }
 
-      const planState = this._hass.states["sensor.plan"];
+      const planState = this._states("sensor.plan");
       if (planState && planState.state && planState.state !== "N/A" && planState.state !== "unknown") {
         html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--divider-color,#eee)">`;
         html += this._metric("Plan", planState.state);
@@ -689,7 +706,7 @@ class TeslaSolarChargingPanel extends HTMLElement {
     }
 
     // ── Advisor ──
-    const advisorState = this._hass.states["sensor.tesla_solar_charging_appliance_advisor_summary"];
+    const advisorState = this._states("sensor.tesla_solar_charging_appliance_advisor_summary");
     const advisorCard = this.querySelector("#card-advisor");
     const advisorEl = this.querySelector("#advisor-content");
     if (advisorCard && advisorEl) {
@@ -719,7 +736,7 @@ class TeslaSolarChargingPanel extends HTMLElement {
     // ── Debug ──
     const debugEl = this.querySelector("#debug-json");
     if (debugEl) {
-      const debugState = this._hass.states["sensor.debug"];
+      const debugState = this._states("sensor.debug");
       debugEl.textContent = debugState?.attributes?.json || "{}";
     }
 
@@ -731,28 +748,6 @@ class TeslaSolarChargingPanel extends HTMLElement {
     }
   }
 
-  _renderDashboard() {
-    const prefix = "sensor.tesla_solar_charging_";
-    const defaultConfig = {
-      grid: { columns: 6, rows: 6, gap: 8 },
-      cards: [
-        { type: "solar", col: 1, row: 1, span_col: 2, span_row: 1, forecast_entity: `${prefix}solar_forecast`, state_entity: `${prefix}state` },
-        { type: "grid", col: 3, row: 1, span_col: 2, span_row: 1 },
-        { type: "battery", col: 5, row: 1, span_col: 2, span_row: 2 },
-        { type: "tesla", col: 1, row: 2, span_col: 2, span_row: 2, state_entity: `${prefix}state`, amps_entity: `${prefix}charging_amps` },
-        { type: "forecast", col: 1, row: 4, span_col: 4, span_row: 1, forecast_entity: `${prefix}solar_forecast` },
-        { type: "debug", col: 1, row: 5, span_col: 6, span_row: 2 },
-      ],
-    };
-
-    let dashEl = this.querySelector("energy-dashboard-card");
-    if (!dashEl) {
-      dashEl = document.createElement("energy-dashboard-card");
-      dashEl.setConfig(defaultConfig);
-      this.appendChild(dashEl);
-    }
-    dashEl.hass = this._hass;
-  }
 }
 
 if (!customElements.get("tesla-solar-charging-panel")) {
