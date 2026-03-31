@@ -31,6 +31,8 @@ from .const import (
     CONF_SAFETY_BUFFER_AMPS,
     CONF_TELEGRAM_CHAT_ID,
     CONF_TESLA_BATTERY_ENTITY,
+    CONF_TESLA_CT_POWER_ENTITY,
+    CT_CHARGING_THRESHOLD,
     DEFAULT_AVG_HOUSE_CONSUMPTION_KWH,
     DEFAULT_BATTERY_DISCHARGE_THRESHOLD,
     CONF_TESLA_LOCATION_ENTITY,
@@ -297,7 +299,11 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         return is_home
 
     def _determine_polling_mode(self, sun_up: bool) -> str:
-        """Determine BLE polling mode based on current charging state."""
+        """Determine BLE polling mode based on current charging state.
+
+        Uses CT clamp as ground truth when available — if the CT clamp shows
+        power draw, the car is definitely charging regardless of BLE state.
+        """
         if not self._enabled:
             return POLLING_MODE_OFF
 
@@ -306,11 +312,16 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
 
         is_charging = self._state in (STATE_CHARGING_SOLAR, STATE_CHARGING_NIGHT)
 
+        # CT clamp overrides BLE state — it's real-time ground truth
+        ct_charging = self._is_ct_charging()
+        if ct_charging is not None:
+            is_charging = is_charging or ct_charging
+
         # Night + not charging + not force_charge + not night_charge_planned → off
         if not sun_up and not is_charging and not self._force_charge and not self._night_charge_planned:
             return POLLING_MODE_OFF
 
-        # Not charging + not force_charge → lazy
+        # Not charging + not force_charge → lazy (60 min)
         if not is_charging and not self._force_charge:
             return POLLING_MODE_LAZY
 
@@ -329,6 +340,19 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         if state is None:
             return False
         return state.state == "on"
+
+    def _is_ct_charging(self) -> bool | None:
+        """Check if CT clamp shows the car is actually drawing power.
+
+        Returns True/False if configured, None if not configured or unavailable.
+        """
+        entity_id = self._entry_data.get(CONF_TESLA_CT_POWER_ENTITY)
+        if not entity_id:
+            return None
+        power = self._get_float(entity_id)
+        if power is None:
+            return None
+        return power > CT_CHARGING_THRESHOLD
 
     def _get_current_amps(self) -> float:
         val = self._get_float(self._ble.charging_amps, MIN_CHARGING_AMPS)
@@ -405,7 +429,10 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
             await self._handle_solar_mode(grid_power, grid_voltage)
         else:
             # Nighttime, no Octopus dispatch — stop charging unless force is on
-            if self._is_charger_on() and not self._force_charge:
+            # Use CT clamp as ground truth if available, fall back to BLE switch
+            ct_charging = self._is_ct_charging()
+            actually_charging = ct_charging if ct_charging is not None else self._is_charger_on()
+            if actually_charging and not self._force_charge:
                 try:
                     await self._ble.stop_charging()
                     self._current_amps = 0
@@ -525,12 +552,17 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._last_tesla_soc = tesla_battery
         self._last_tesla_limit = tesla_limit
 
+        # Use CT clamp as ground truth for charging detection when available
+        ct_charging = self._is_ct_charging()
+        ble_charging = self._is_charger_on()
+        is_charging = ct_charging if ct_charging is not None else ble_charging
+
         sensor_state = SensorState(
             grid_power=grid_power,
             grid_voltage=grid_voltage,
             battery_soc=battery_soc,
             battery_power=battery_power,
-            is_charging=self._is_charger_on(),
+            is_charging=is_charging,
             current_amps=self._get_current_amps(),
             low_amp_count=self._low_amp_count,
             tesla_battery=tesla_battery,

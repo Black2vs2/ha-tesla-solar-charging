@@ -16,6 +16,7 @@
           "tesla_location_entity": "Tesla Location Tracker (optional)",
           "home_location_states": "Home Location States (comma-separated, e.g. home, Piano di sotto)",
           "tesla_battery_entity": "Tesla Battery SOC Sensor (optional)",
+          "tesla_ct_power_entity": "Tesla EVSE CT Clamp Power (optional)",
           "daily_production_entity": "Daily Solar Production Sensor (optional)"
         }
       },
@@ -80,6 +81,7 @@
           "tesla_location_entity": "Tesla Location Tracker (optional)",
           "home_location_states": "Home Location States (comma-separated, e.g. home, Piano di sotto)",
           "tesla_battery_entity": "Tesla Battery SOC Sensor (optional)",
+          "tesla_ct_power_entity": "Tesla EVSE CT Clamp Power (optional)",
           "daily_production_entity": "Daily Solar Production Sensor (optional)"
         }
       },

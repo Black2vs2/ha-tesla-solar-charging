@@ -54,6 +54,7 @@ from .const import (
     CONF_TELEGRAM_CHAT_ID,
     CONF_TESLA_BATTERY_ENTITY,
     CONF_TESLA_BATTERY_KWH,
+    CONF_TESLA_CT_POWER_ENTITY,
     CONF_TESLA_LOCATION_ENTITY,
     CONF_SOLCAST_API_KEY,
     CONF_SOLCAST_RESOURCE_ID,
@@ -248,6 +249,7 @@ class TeslaSolarChargingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY): TRACKER_SELECTOR,
                 vol.Optional(CONF_HOME_LOCATION_STATES, default=DEFAULT_HOME_LOCATION_STATES): str,
                 vol.Optional(CONF_TESLA_BATTERY_ENTITY): SENSOR_SELECTOR,
+                vol.Optional(CONF_TESLA_CT_POWER_ENTITY): SENSOR_SELECTOR,
                 vol.Optional(CONF_DAILY_PRODUCTION_ENTITY): SENSOR_SELECTOR,
             }),
         )
@@ -355,6 +357,7 @@ class TeslaSolarChargingOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(CONF_TESLA_LOCATION_ENTITY, default=data.get(CONF_TESLA_LOCATION_ENTITY, "")): TRACKER_SELECTOR,
                 vol.Optional(CONF_HOME_LOCATION_STATES, default=data.get(CONF_HOME_LOCATION_STATES, DEFAULT_HOME_LOCATION_STATES)): str,
                 vol.Optional(CONF_TESLA_BATTERY_ENTITY, default=data.get(CONF_TESLA_BATTERY_ENTITY, "")): SENSOR_SELECTOR,
+                vol.Optional(CONF_TESLA_CT_POWER_ENTITY, default=data.get(CONF_TESLA_CT_POWER_ENTITY, "")): SENSOR_SELECTOR,
                 vol.Optional(CONF_DAILY_PRODUCTION_ENTITY, default=data.get(CONF_DAILY_PRODUCTION_ENTITY, "")): SENSOR_SELECTOR,
             }),
         )

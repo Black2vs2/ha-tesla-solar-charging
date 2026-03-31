@@ -29,6 +29,10 @@ POLLING_SOC_CLOSE_THRESHOLD = 2
 CONF_TESLA_LOCATION_ENTITY = "tesla_location_entity"
 CONF_TESLA_BATTERY_ENTITY = "tesla_battery_entity"
 CONF_TESLA_CHARGE_LIMIT_ENTITY = "tesla_charge_limit_entity"
+CONF_TESLA_CT_POWER_ENTITY = "tesla_ct_power_entity"
+
+# CT clamp threshold — power above this means the car is actually charging (W)
+CT_CHARGING_THRESHOLD = 100
 
 # Config keys — Deye inverter control entities
 CONF_DEYE_WORK_MODE_ENTITY = "deye_work_mode_entity"

@@ -69,6 +69,14 @@ void TeslaBLEVehicle::setup() {
     polling_interval_ms_ = get_polling_interval_ms_(current_polling_mode_);
     ESP_LOGI(TAG, "Polling mode initialized to: %s", sel->get_initial_option().c_str());
   }
+
+  // Publish initial counter values so they don't show as "unknown"
+  if (state_manager_) {
+    auto *ws = state_manager_->get_sensor("wake_count");
+    if (ws) ws->publish_state(0.0f);
+    auto *ps = state_manager_->get_sensor("poll_count");
+    if (ps) ps->publish_state(0.0f);
+  }
 }
 
 void TeslaBLEVehicle::initialize_managers() {
@@ -316,10 +324,10 @@ TeslaBLEVehicle::PollingMode TeslaBLEVehicle::parse_polling_mode_(const std::str
 uint32_t TeslaBLEVehicle::get_polling_interval_ms_(PollingMode mode) {
   switch (mode) {
     case PollingMode::OFF:    return 0;
-    case PollingMode::LAZY:   return 1800000;   // 30 min
+    case PollingMode::LAZY:   return 3600000;   // 60 min
     case PollingMode::ACTIVE: return 600000;    // 10 min
     case PollingMode::CLOSE:  return 300000;    // 5 min
-    default:                  return 1800000;
+    default:                  return 3600000;
   }
 }
 
@@ -335,7 +343,7 @@ void TeslaBLEVehicle::apply_polling_mode_(PollingMode mode) {
     lazy_poll_pending_ = false;
     this->parent()->set_enabled(false);
   } else if (mode == PollingMode::LAZY) {
-    ESP_LOGI(TAG, "Polling LAZY — poll every 30 min");
+    ESP_LOGI(TAG, "Polling LAZY — poll every 60 min");
     lazy_poll_pending_ = false;
     // Don't connect yet — wait for next poll tick
   } else {

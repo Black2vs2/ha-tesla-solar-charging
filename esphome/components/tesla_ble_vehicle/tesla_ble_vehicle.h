@@ -243,7 +243,7 @@ private:
     };
 
     PollingMode current_polling_mode_{PollingMode::LAZY};
-    uint32_t polling_interval_ms_{1800000};  // 30 min (lazy default)
+    uint32_t polling_interval_ms_{3600000};  // 60 min (lazy default)
     bool lazy_poll_pending_{false};
     uint32_t lazy_disconnect_after_ms_{30000};  // 30s grace
     uint32_t lazy_poll_started_at_{0};
