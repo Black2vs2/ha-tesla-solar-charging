@@ -35,7 +35,7 @@ class SensorState:
 class Config:
     """Charging configuration parameters."""
     min_export_power: float = 1200.0   # W of export needed to start
-    max_charging_amps: int = 16
+    max_charging_amps: int = 32
     safety_buffer_amps: float = 3.0    # amps reserved (never use for car)
     battery_soc_threshold: float = 80.0  # min home battery % to even consider starting
     low_amp_stop_count: int = 3        # consecutive low readings before stop
