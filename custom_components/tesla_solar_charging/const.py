@@ -1,7 +1,6 @@
 """Constants for Tesla Solar Charging integration."""
 
 DOMAIN = "tesla_solar_charging"
-VERSION = "4.0.0"
 
 # Config keys — required sensor entities
 CONF_GRID_POWER_ENTITY = "grid_power_entity"
