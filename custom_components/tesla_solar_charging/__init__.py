@@ -48,7 +48,6 @@ from .const import (
     DEFAULT_TESLA_BATTERY_KWH,
     DOMAIN,
     PLATFORMS,
-    VERSION,
     STATE_PLANNED_NIGHT,
     STATE_PLANNED_SOLAR,
 )
@@ -62,6 +61,17 @@ from .planner import check_multi_day_outlook, create_charge_plan
 from .weather_forecast import fetch_solar_forecast
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _manifest_version() -> str:
+    """Read version from manifest.json (auto-bumped by pre-commit hook)."""
+    import json
+    from pathlib import Path
+    manifest = Path(__file__).parent / "manifest.json"
+    try:
+        return json.loads(manifest.read_text())["version"]
+    except Exception:
+        return "0"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -244,7 +254,7 @@ async def _async_setup_charging_entry(hass: HomeAssistant, entry: ConfigEntry) -
         config={
             "_panel_custom": {
                 "name": "tesla-solar-charging-panel",
-                "module_url": f"/{DOMAIN}/panel/panel.js?v={VERSION}",
+                "module_url": f"/{DOMAIN}/panel/panel.js?v={_manifest_version()}",
                 "embed_iframe": False,
                 "trust_external": False,
             },
