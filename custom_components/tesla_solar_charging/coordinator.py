@@ -91,6 +91,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         self._chat_id = entry_data.get(CONF_TELEGRAM_CHAT_ID)
         self._enabled = False
         self._low_amp_count = 0
+        self._stop_cooldown = 0
         self._state = STATE_IDLE
         self._current_amps = 0
         self._net_available = 0.0
@@ -557,6 +558,23 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         ble_charging = self._is_charger_on()
         is_charging = ct_charging if ct_charging is not None else ble_charging
 
+        # After STOP, if BLE still shows "on", retry stop instead of
+        # re-entering charging logic (BLE commands can take a few cycles)
+        if self._stop_cooldown > 0:
+            self._stop_cooldown -= 1
+            if is_charging:
+                _LOGGER.info("Stop cooldown %d: BLE still on, retrying stop", self._stop_cooldown)
+                try:
+                    await self._ble.stop_charging()
+                except Exception as err:
+                    _LOGGER.error("Stop retry BLE failed: %s", err)
+                self._reason = f"Stopping — waiting for car to respond ({self._stop_cooldown} cycles left)"
+                return
+            else:
+                # Car actually stopped, clear cooldown
+                self._stop_cooldown = 0
+                _LOGGER.info("Stop cooldown: car confirmed stopped")
+
         sensor_state = SensorState(
             grid_power=grid_power,
             grid_voltage=grid_voltage,
@@ -601,6 +619,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 self._state = STATE_STOPPED
                 self._current_amps = 0
                 self._low_amp_count = 0
+                self._stop_cooldown = 3
                 if "reached limit" in decision.reason:
                     from .notification import format_charge_limit_reached
                     tesla_bat = self._get_float(self._entry_data.get(CONF_TESLA_BATTERY_ENTITY, "")) or 0

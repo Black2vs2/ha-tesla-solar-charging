@@ -167,6 +167,13 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
     # If home battery starts discharging, reduce car charge immediately
     # (means solar dropped and inverter is pulling from battery)
     if state.battery_power > config.battery_discharge_threshold:
+        # SOC below threshold — stop immediately, don't waste cycles counting
+        if state.battery_soc < config.battery_soc_threshold:
+            return Decision(
+                action=Action.STOP,
+                reason=f"Battery {state.battery_soc}% below {config.battery_soc_threshold}% and discharging {state.battery_power:.0f}W — stopping",
+                new_low_amp_count=0,
+            )
         target = max(int(state.current_amps - 2), config.min_charging_amps)
         if state.current_amps <= config.min_charging_amps:
             new_count = state.low_amp_count + 1
