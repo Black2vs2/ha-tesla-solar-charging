@@ -136,8 +136,15 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
                 )
 
         # Battery at threshold but inverter still absorbing — start at minimum,
-        # the ramp logic will adjust once export kicks in
-        if state.battery_soc >= config.battery_soc_threshold and state.battery_power < 0:
+        # the ramp logic will adjust once export kicks in.
+        # Only if battery is absorbing enough to sustain min charging — otherwise
+        # starting at 5A (~1150W) would immediately overwhelm what's available
+        # and cause a start/stop oscillation loop.
+        if (
+            state.battery_soc >= config.battery_soc_threshold
+            and state.battery_power < 0
+            and abs(state.battery_power) >= config.min_export_power
+        ):
             return Decision(
                 action=Action.START,
                 target_amps=config.min_charging_amps,
@@ -175,7 +182,7 @@ def decide(state: SensorState, config: Config, force: bool = False) -> Decision:
                 new_low_amp_count=0,
             )
         target = max(int(state.current_amps - 2), config.min_charging_amps)
-        if state.current_amps <= config.min_charging_amps:
+        if target <= config.min_charging_amps:
             new_count = state.low_amp_count + 1
             if new_count >= config.low_amp_stop_count:
                 return Decision(
