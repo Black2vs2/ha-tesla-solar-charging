@@ -572,20 +572,33 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         ble_charging = self._is_charger_on()
         is_charging = ct_charging if ct_charging is not None else ble_charging
 
-        # After STOP, if BLE still shows "on", retry stop instead of
-        # re-entering charging logic (BLE commands can take a few cycles)
+        # After STOP, if CT/BLE still shows charging, retry stop.
+        # But once cooldown expires and car is still charging, accept that
+        # the BLE stop command never reached the car and resume management.
         if self._stop_cooldown > 0:
             self._stop_cooldown -= 1
             if is_charging:
-                _LOGGER.info("Stop cooldown %d: BLE still on, retrying stop", self._stop_cooldown)
-                try:
-                    await self._ble.stop_charging()
-                except Exception as err:
-                    _LOGGER.error("Stop retry BLE failed: %s", err)
-                self._reason = f"Stopping — waiting for car to respond ({self._stop_cooldown} cycles left)"
-                return
+                if self._stop_cooldown > 0:
+                    _LOGGER.info("Stop cooldown %d: still charging, retrying stop", self._stop_cooldown)
+                    try:
+                        await self._ble.stop_charging()
+                    except Exception as err:
+                        _LOGGER.error("Stop retry BLE failed: %s", err)
+                    self._reason = f"Stopping — waiting for car to respond ({self._stop_cooldown} cycles left)"
+                    return
+                else:
+                    # Cooldown expired but car is still charging — BLE stop
+                    # never reached the car. Accept reality and manage the charge.
+                    _LOGGER.warning(
+                        "BLE stop command didn't reach car — CT still shows charging. "
+                        "Resuming charge management. Check ESP32 BLE connection."
+                    )
+                    await self._notify(
+                        "⚠️ BLE stop command didn't reach the car — CT clamp shows it's "
+                        "still charging. Resuming charge management.\n"
+                        "You may need to reboot the ESP32."
+                    )
             else:
-                # Car actually stopped, clear cooldown
                 self._stop_cooldown = 0
                 _LOGGER.info("Stop cooldown: car confirmed stopped")
 
@@ -657,13 +670,31 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                     self._state = STATE_CHARGING_SOLAR
         except Exception as err:
             _LOGGER.error("Solar mode BLE command failed: %s", err)
-            self._state = STATE_ERROR
-            self._reason = f"BLE error: {err}"
+            # If CT is available and shows charging, don't go to ERROR —
+            # we can still track and report the charge session via CT
+            if is_charging and ct_charging is not None:
+                _LOGGER.warning(
+                    "BLE command failed but CT clamp shows car is charging at %.0fA — "
+                    "tracking via CT", effective_amps,
+                )
+                self._current_amps = int(effective_amps)
+                self._state = STATE_CHARGING_SOLAR
+                self._reason = f"BLE unreachable, tracking via CT ({int(effective_amps)}A actual)"
+            else:
+                self._state = STATE_ERROR
+                self._reason = f"BLE error: {err}"
 
         # Accumulate daily solar charging stats
         if self._state == STATE_CHARGING_SOLAR:
             interval = self._entry_data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-            kwh_this_tick = (self._current_amps * grid_voltage * interval) / 3_600_000
+            # Use CT power when available for accurate energy tracking
+            ct_entity = self._entry_data.get(CONF_TESLA_CT_POWER_ENTITY)
+            ct_power = self._get_float(ct_entity) if ct_entity else None
+            if ct_power is not None and ct_power > CT_CHARGING_THRESHOLD:
+                charge_power_w = ct_power
+            else:
+                charge_power_w = self._current_amps * grid_voltage
+            kwh_this_tick = (charge_power_w * interval) / 3_600_000
             self._daily_solar_kwh += kwh_this_tick
             self._daily_charge_seconds += interval
             self._daily_peak_amps = max(self._daily_peak_amps, self._current_amps)
