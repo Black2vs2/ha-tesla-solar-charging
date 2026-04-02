@@ -154,6 +154,43 @@ class TestDecideSolar:
         decision = decide(state, self._make_config())
         assert decision.action == Action.STOP
 
+    def test_fractional_ct_amps_still_counts_toward_stop(self):
+        # CT clamp reports 5.2A (fractional), should still count as "at minimum"
+        # and increment low_amp_count — not reset it to 0
+        state = self._make_state(
+            is_charging=True, grid_power=0, current_amps=5.2,
+            battery_soc=98, battery_power=825, low_amp_count=0
+        )
+        decision = decide(state, self._make_config())
+        assert decision.new_low_amp_count == 1
+
+    def test_fractional_ct_amps_stops_after_enough_counts(self):
+        # CT at 5.1A with count=2 should trigger stop (count reaches 3)
+        state = self._make_state(
+            is_charging=True, grid_power=0, current_amps=5.1,
+            battery_soc=98, battery_power=897, low_amp_count=2
+        )
+        decision = decide(state, self._make_config())
+        assert decision.action == Action.STOP
+
+    def test_no_restart_when_battery_absorption_too_low(self):
+        # Battery at 98% absorbing only 378W — not enough to sustain 5A (1150W).
+        # Should NOT start; would cause oscillation loop.
+        state = self._make_state(
+            grid_power=42, battery_soc=98, battery_power=-378, is_charging=False
+        )
+        decision = decide(state, self._make_config(min_export_power=900))
+        assert decision.action == Action.NONE
+
+    def test_start_when_battery_absorption_sufficient(self):
+        # Battery at 98% absorbing 2000W — plenty of solar, start at min amps
+        state = self._make_state(
+            grid_power=0, battery_soc=98, battery_power=-2000, is_charging=False
+        )
+        decision = decide(state, self._make_config(min_export_power=900))
+        assert decision.action == Action.START
+        assert decision.target_amps == 5
+
     # --- Graceful stop ---
 
     def test_stop_after_consecutive_low_counts(self):
