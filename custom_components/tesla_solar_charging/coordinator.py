@@ -359,6 +359,20 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
         val = self._get_float(self._ble.charging_amps, MIN_CHARGING_AMPS)
         return val if val is not None else MIN_CHARGING_AMPS
 
+    def _get_effective_amps(self, grid_voltage: float) -> float:
+        """Get actual charging amps — prefer CT clamp (ground truth) over BLE entity.
+
+        BLE entities can be stale (e.g. switch shows 'off', amps shows 5)
+        while the car is actually charging at 16A. The CT clamp measures
+        real power draw on the charger circuit.
+        """
+        ct_entity = self._entry_data.get(CONF_TESLA_CT_POWER_ENTITY)
+        if ct_entity:
+            ct_power = self._get_float(ct_entity)
+            if ct_power is not None and ct_power > CT_CHARGING_THRESHOLD:
+                return ct_power / grid_voltage if grid_voltage > 0 else 0.0
+        return self._get_current_amps()
+
     def _is_octopus_dispatching(self) -> bool:
         """Check if Octopus Intelligent is actively dispatching (cheap rate window)."""
         if not self._entry_data.get(CONF_OCTOPUS_ENABLED, False):
@@ -575,13 +589,18 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
                 self._stop_cooldown = 0
                 _LOGGER.info("Stop cooldown: car confirmed stopped")
 
+        # Use CT clamp as ground truth for amps when available — BLE entities
+        # can be stale (switch "off", amps stuck at 5) while the car is actually
+        # charging at 16A. CT measures real power on the charger circuit.
+        effective_amps = self._get_effective_amps(grid_voltage) if is_charging else 0.0
+
         sensor_state = SensorState(
             grid_power=grid_power,
             grid_voltage=grid_voltage,
             battery_soc=battery_soc,
             battery_power=battery_power,
             is_charging=is_charging,
-            current_amps=self._get_current_amps(),
+            current_amps=effective_amps if is_charging else self._get_current_amps(),
             low_amp_count=self._low_amp_count,
             tesla_battery=tesla_battery,
             tesla_charge_limit=tesla_limit,
@@ -600,7 +619,7 @@ class SolarChargingCoordinator(DataUpdateCoordinator):
 
         self._net_available = calculate_net_available(
             grid_power, grid_voltage, battery_power, config.safety_buffer_amps,
-            current_charging_amps=self._get_current_amps() if self._is_charger_on() else 0.0,
+            current_charging_amps=effective_amps,
         )
 
         decision = decide(sensor_state, config, force=self._force_charge)
